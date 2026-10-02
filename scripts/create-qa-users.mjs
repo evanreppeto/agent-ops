@@ -3,14 +3,16 @@
 // then writes the four *_QA_* values into agent-ops/.env. Passwords are never printed.
 //
 // Run it yourself from the agent-ops folder:
-//   BSR_DEV_SUPABASE_URL=... BSR_DEV_SERVICE_ROLE_KEY=... \
-//   ARC_SUPABASE_URL=... ARC_SERVICE_ROLE_KEY=... \
 //   node scripts/create-qa-users.mjs            # both apps
 //   node scripts/create-qa-users.mjs --app arc  # one app
 //
+// It reads BSR_DEV_SUPABASE_URL, BSR_DEV_SERVICE_ROLE_KEY, ARC_SUPABASE_URL, ARC_SERVICE_ROLE_KEY
+// from the environment, or from agent-ops/.setup.env (git-ignored), which it deletes after a
+// successful run so the service keys don't linger on disk.
+//
 // Values come from Vercel → project → Settings → Environment Variables:
 //   NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (BSR: the dev/Preview values).
-import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { getApp } from "../lib/config.mjs";
@@ -117,7 +119,10 @@ const SETUP = {
   arc: { urlEnv: "ARC_SUPABASE_URL", keyEnv: "ARC_SERVICE_ROLE_KEY", run: setupArc },
 };
 
+const SETUP_ENV = join(REPO_ROOT, ".setup.env");
+
 async function main() {
+  if (existsSync(SETUP_ENV)) process.loadEnvFile(SETUP_ENV);
   const flag = process.argv.indexOf("--app");
   const keys = flag === -1 ? ["bsr", "arc"] : [process.argv[flag + 1]];
   for (const key of keys) if (!SETUP[key]) throw new Error(`Unknown app "${key}" (use bsr or arc)`);
@@ -143,6 +148,10 @@ async function main() {
   writeFileSync(envPath, mergeEnv(before, updates), { mode: 0o600 });
   chmodSync(envPath, 0o600);
   console.log(`Saved ${Object.keys(updates).join(", ")} to ${envPath} (values not shown).`);
+  if (existsSync(SETUP_ENV)) {
+    rmSync(SETUP_ENV);
+    console.log(`Deleted ${SETUP_ENV} (service keys no longer on disk).`);
+  }
 }
 
 main().catch((err) => {

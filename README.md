@@ -17,12 +17,7 @@ Shared brains for the dev-pipeline agents (spec: `clone-BS-migration/docs/superp
 3. **QA logins** — one command creates both and saves them to `.env`:
    - BSR dev outbound: first confirm the dev deployment's Vercel env has no live Resend, Quo, or QuickBooks keys (remove them or use sandbox keys) — ordinary saves on dev can email/text real people.
    - Arc dev shares the **production** database, and prod background jobs (scheduled dispatch every minute, automations every 5 minutes) act on it. The test workspace (`arc.testWorkspace` = "Test Workspace") must have no connected email/SMS/social/webhook/CRM senders and no active automations.
-   - Copy four values from Vercel (Settings → Environment Variables): `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for BSR (**dev/Preview** values) and for Arc. Then run, from this folder:
-
-     ```bash
-     read -s -p "BSR dev URL: " BSR_DEV_SUPABASE_URL; echo; read -s -p "BSR dev service key: " BSR_DEV_SERVICE_ROLE_KEY; echo; read -s -p "Arc URL: " ARC_SUPABASE_URL; echo; read -s -p "Arc service key: " ARC_SERVICE_ROLE_KEY; echo; export BSR_DEV_SUPABASE_URL BSR_DEV_SERVICE_ROLE_KEY ARC_SUPABASE_URL ARC_SERVICE_ROLE_KEY; node scripts/create-qa-users.mjs
-     ```
-
+   - Copy four values from Vercel (Settings → Environment Variables): `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for BSR (**dev/Preview** values) and for Arc. Put them in `agent-ops/.setup.env` (git-ignored) as `BSR_DEV_SUPABASE_URL=`, `BSR_DEV_SERVICE_ROLE_KEY=`, `ARC_SUPABASE_URL=`, `ARC_SERVICE_ROLE_KEY=`, then run `node scripts/create-qa-users.mjs`. The script deletes `.setup.env` after a successful run.
    - It creates `evan.reppeto5928+bsrqa@gmail.com` (approved admin on BSR dev) and `evan.reppeto5928+arcqa@gmail.com` (admin of Test Workspace only, no two-step), gives each a random password, and writes them to `.env`. It refuses BSR's production database and any database that isn't Arc's. Re-running it resets the passwords.
 4. **Cloud environment** (claude.ai/code → environments → new "agent-ops"):
    - Network: Custom — allow `dev.bigshouldersmanager.com`, `dev.arc-studio.ai`, `uploads.linear.app`, `storage.googleapis.com`, plus defaults. Also allow:

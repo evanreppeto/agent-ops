@@ -14,6 +14,7 @@
 //   NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (BSR: the dev/Preview values).
 import { existsSync, readFileSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 import { getApp } from "../lib/config.mjs";
 import { REPO_ROOT } from "../lib/paths.mjs";
@@ -122,7 +123,12 @@ const SETUP = {
 const SETUP_ENV = join(REPO_ROOT, ".setup.env");
 
 async function main() {
-  if (existsSync(SETUP_ENV)) process.loadEnvFile(SETUP_ENV);
+  // The file wins over empty shell variables (e.g. left over from an earlier `export`).
+  if (existsSync(SETUP_ENV)) {
+    for (const [k, v] of Object.entries(parseEnv(readFileSync(SETUP_ENV, "utf8")))) {
+      if (v && !process.env[k]) process.env[k] = v;
+    }
+  }
   const flag = process.argv.indexOf("--app");
   const keys = flag === -1 ? ["bsr", "arc"] : [process.argv[flag + 1]];
   for (const key of keys) if (!SETUP[key]) throw new Error(`Unknown app "${key}" (use bsr or arc)`);

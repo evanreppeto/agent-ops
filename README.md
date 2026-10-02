@@ -3,6 +3,8 @@
 Shared brains for the dev-pipeline agents (spec: `clone-BS-migration/docs/superpowers/specs/2026-10-02-agent-dev-pipeline-design.md`).
 
 - `QA_AGENT.md` — what the hourly QA routine does.
+- `RELEASE_AGENT.md` — what the Thursday release routine does (prepares the dev → main release PR).
+- `POST_RELEASE.md` — what the hourly post-release routine does (confirms prod is live after you merge, marks tickets Done).
 - `apps.json` — dev/prod URLs, viewports, login selectors, safety rules per app.
 - `qa/<app>/<TICKET>.spec.mjs` — one regression test per ticket that passed QA.
 - `npm test` — unit tests. `npm run qa:check` — prove logins work.
@@ -37,3 +39,16 @@ Expected: 3 tests pass and screenshots appear under `test-results/`.
 ## First live run (Evan)
 
 The QA agent skips tickets it already tested by finding a footer line like `_qa-agent sha=<40-char sha> verdict=pass_` in the ticket's comments. After the first real (non-DRY_RUN) QA comment is posted, read that comment back through Linear (API/MCP, not just the UI) and confirm the footer line is still there with the full sha. If Linear rewrote or dropped it, stop the routine — every ticket would be re-tested every hour.
+
+## Release day (Evan)
+
+1. **Thursday about 10am ET** a 🚀 Slack message arrives: "<app> release ready". Open the PR.
+2. Tick every box in its checklist. If it lists migrations, **push them to production first**.
+3. **Merge with "Create a merge commit"** (never squash).
+4. Within the hour a ✅ Slack confirms production is live and the tickets are Done. You do nothing else.
+
+If you get a **⏸️ held** message: merge the undo PR (or fix the ticket), then press **Run now** on the Release agent routine.
+
+If you get a **🚨** message: use the rollback steps in it (Vercel → project → Deployments → previous Production deployment → ⋯ → Instant Rollback). Rolling back code does not undo migrations.
+
+Routine schedules (UTC cron): Release agent `0 14 * * 4` (Thursday 10am ET in summer); post-release check `30 13-23 * * 1-5` (hourly on weekdays).

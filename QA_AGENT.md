@@ -138,6 +138,7 @@ test.describe("<TICKET-ID> <ticket title>", () => {
 
 Rules:
 - Every test-plan item maps to at least one `expect`. Keep a note of which `expect` covers which plan item.
+- Known dev-site noise is already filtered out by the fixture (`ignoreMissingResources` in apps.json — e.g. BSR dev's missing profile pictures under `/avatars/`). Don't count it, and don't add it to `BASELINE`.
 - Console errors: always end with `expect(newConsoleErrors(BASELINE), …).toEqual([])`. `BASELINE` holds only this app's errors recorded in step 0d — never add an error you first saw while testing this ticket. `newConsoleErrors` ignores any error containing a baseline string (blank strings are ignored).
 - Use only the app's **dev URL** (relative paths; baseURL is set). Never navigate to a prod URL.
 - Obey the app's `safety` rules in `<AGENT_OPS>/apps.json`. Never click send / launch / publish / push-to-QuickBooks, never schedule, never enable automations, never connect integrations. If the feature can't be verified without one of those, verdict **blocked**.
@@ -165,6 +166,8 @@ If it fails, decide **why**:
 - Still unclear after 3 attempts: verdict **blocked** ("couldn't get a reliable test").
 
 Pass = every planned check passed on every viewport, the run counts above are clean, **and** the screenshots look right.
+
+**Scoped pass.** Judge what the merged PR changed, not the whole ticket. If everything this PR changed is verified, but other parts of the ticket can only be checked with real hardware or a field run (camera, microphone, GPS, a phone install, a real customer), the verdict is still **pass**: start the summary with what was verified and add a line `Not covered (needs a field test): <parts>`. The ticket moves to Ready to Release like any pass. If part of what *this PR* changed couldn't be verified, that is **blocked**, not pass.
 
 ### 2f. Keep the regression test (pass only; skip in DRY_RUN)
 Only for **pass**, and not in DRY_RUN (print the commands instead). Run these one at a time and check each result:

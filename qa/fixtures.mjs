@@ -2,13 +2,21 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { test as base, expect } from "@playwright/test";
 import { withoutBaseline } from "../lib/console-baseline.mjs";
+import { isIgnoredConsoleError } from "../lib/console-ignore.mjs";
+import { getApp } from "../lib/config.mjs";
 
 export const test = base.extend({
   // Every console error / page error seen during the test. Also saved as
   // test-results/<test-folder>/console-errors.json (and attached to the report).
   consoleErrors: async ({ page }, use, testInfo) => {
     const errors = [];
-    page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
+    // Project names are "<appKey>-<viewport>"; known dev noise for that app (apps.json) is dropped.
+    const app = getApp(testInfo.project.name.split("-")[0]);
+    page.on("console", (msg) => {
+      if (msg.type() !== "error") return;
+      if (isIgnoredConsoleError(app, msg.text(), msg.location().url)) return;
+      errors.push(msg.text());
+    });
     page.on("pageerror", (err) => errors.push(String(err)));
     await use(errors);
     const body = JSON.stringify(errors, null, 2);

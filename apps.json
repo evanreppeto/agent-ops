@@ -37,7 +37,10 @@
     "deployProbe": {
       "path": "/sw.js",
       "pattern": "[0-9a-f]{12}"
-    }
+    },
+    "ignoreMissingResources": [
+      "/avatars/"
+    ]
   },
   "arc": {
     "name": "Arc Studio",

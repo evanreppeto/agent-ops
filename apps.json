@@ -1,0 +1,43 @@
+{
+  "bsr": {
+    "name": "BSR Manager App",
+    "repo": "evanreppeto/clone-BS-migration",
+    "devUrl": "https://dev.bigshouldersmanager.com",
+    "prodUrl": "https://www.bigshouldersmanager.com",
+    "viewports": [
+      { "name": "desktop", "width": 1280, "height": 800, "isMobile": false },
+      { "name": "phone", "width": 390, "height": 844, "isMobile": true }
+    ],
+    "login": {
+      "path": "/auth/login",
+      "emailSelector": "input[type=\"email\"]",
+      "passwordSelector": "input[type=\"password\"]",
+      "submitSelector": "form button[type=\"submit\"]"
+    },
+    "credsEnv": { "email": "BSR_QA_EMAIL", "password": "BSR_QA_PASSWORD" },
+    "safety": [
+      "Dev has its own database: creating/editing/deleting test records is fine.",
+      "Never send email or SMS, never push to QuickBooks, never trigger payroll or invoice reminders — dev may still be wired to real Resend, Quo, and QuickBooks."
+    ]
+  },
+  "arc": {
+    "name": "Arc Studio",
+    "repo": "evanreppeto/arc-studio",
+    "devUrl": "https://dev.arc-studio.ai",
+    "prodUrl": "https://arc-studio.ai",
+    "viewports": [
+      { "name": "desktop", "width": 1280, "height": 800, "isMobile": false }
+    ],
+    "login": {
+      "path": "/login",
+      "emailSelector": "#email",
+      "passwordSelector": "#password",
+      "submitSelector": "form[action=\"/api/auth/sign-in\"] button[type=\"submit\"]"
+    },
+    "credsEnv": { "email": "ARC_QA_EMAIL", "password": "ARC_QA_PASSWORD" },
+    "safety": [
+      "Dev SHARES THE PRODUCTION DATABASE. Act only inside the test workspace; if the workspace switcher shows any other workspace as active, stop and mark the ticket blocked.",
+      "Never approve-and-launch, send, or publish anything outbound (campaign launch, external send, email, social post). Drafting and approving inside the test workspace is fine."
+    ]
+  }
+}

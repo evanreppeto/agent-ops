@@ -50,5 +50,6 @@ The QA agent skips tickets it already tested by finding a footer line like `_qa-
 If you get a **⏸️ held** message: merge the undo PR (or fix the ticket), then press **Run now** on the Release agent routine.
 
 If you get a **🚨** message: use the rollback steps in it (Vercel → project → Deployments → previous Production deployment → ⋯ → Instant Rollback). Rolling back code does not undo migrations.
+If you rolled back **on purpose**, comment `<!-- post-release-skip -->` on the release PR so the post-release check stops alerting about it.
 
 Routine schedules (UTC cron): Release agent `0 14 * * 4` (Thursday 10am ET in summer); post-release check `30 13-23 * * 1-5` (hourly on weekdays).

@@ -3,7 +3,7 @@
 Shared brains for the dev-pipeline agents (spec: `clone-BS-migration/docs/superpowers/specs/2026-10-02-agent-dev-pipeline-design.md`).
 
 - `QA_AGENT.md` — what the hourly QA routine does.
-- `RELEASE_AGENT.md` — what the Thursday release routine does (prepares the dev → main release PR).
+- `RELEASE_AGENT.md` — what the weekly (Thursday) release routine does for both apps: prepares the dev → main release PR from a frozen `claude/promote-<DATE>` branch cut at the exact dev commit it tested.
 - `POST_RELEASE.md` — what the hourly post-release routine does (confirms prod is live after you merge, marks tickets Done).
 - `apps.json` — dev/prod URLs, viewports, login selectors, safety rules per app.
 - `qa/<app>/<TICKET>.spec.mjs` — one regression test per ticket that passed QA.
@@ -22,7 +22,7 @@ Shared brains for the dev-pipeline agents (spec: `clone-BS-migration/docs/superp
    - Copy four values from Vercel (Settings → Environment Variables): `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for BSR (**dev/Preview** values) and for Arc. Put them in `agent-ops/.setup.env` (git-ignored) as `BSR_DEV_SUPABASE_URL=`, `BSR_DEV_SERVICE_ROLE_KEY=`, `ARC_SUPABASE_URL=`, `ARC_SERVICE_ROLE_KEY=`, then run `node scripts/create-qa-users.mjs`. The script deletes `.setup.env` after a successful run.
    - It creates `evan.reppeto5928+bsrqa@gmail.com` (approved admin on BSR dev) and `evan.reppeto5928+arcqa@gmail.com` (admin of Test Workspace only, no two-step), gives each a random password, and writes them to `.env`. It refuses BSR's production database and any database that isn't Arc's. Re-running it resets the passwords.
 4. **Cloud environment** (claude.ai/code → environments → new "agent-ops"):
-   - Network: Custom — allow `dev.bigshouldersmanager.com`, `dev.arc-studio.ai`, `uploads.linear.app`, `storage.googleapis.com`, `vercel.live`, `cdn.playwright.dev`, `playwright.download.prss.microsoft.com`, `playwright.azureedge.net` (browser download), `jbarlcajqpbzbhvbxaci.supabase.co` (BSR dev DB), `qqbecyrhnowmooyjiztz.supabase.co` (Arc DB), and tick "Also include default list of common package managers". Also allow:
+   - Network: Custom — allow `dev.bigshouldersmanager.com`, `dev.arc-studio.ai`, `uploads.linear.app`, `storage.googleapis.com`, `vercel.live`, `cdn.playwright.dev`, `playwright.download.prss.microsoft.com`, `playwright.azureedge.net` (browser download), `jbarlcajqpbzbhvbxaci.supabase.co` (BSR dev DB), `qqbecyrhnowmooyjiztz.supabase.co` (Arc DB), and — for the post-release production page check — `www.bigshouldersmanager.com`, `arc-studio.ai` and `tesgvrcgcyadownahujh.supabase.co` (BSR prod DB, loaded by the prod login page); tick "Also include default list of common package managers". Also allow:
      - each app's Supabase host (BSR's browser login calls Supabase directly): the host part of `NEXT_PUBLIC_SUPABASE_URL` in each app's Vercel **dev/preview** env (e.g. `<project-ref>.supabase.co`);
      - any third-party hosts the pages load (fonts, Sentry, analytics).
      Then run the setup check in the cloud and read its output and `test-results/*/console-errors.json`: every `net::ERR_` console error names a blocked host. Add hosts until it's clean.
@@ -42,12 +42,20 @@ The QA agent skips tickets it already tested by finding a footer line like `_qa-
 
 ## Release day (Evan)
 
-1. **Thursday about 10am ET** a 🚀 Slack message arrives: "<app> release ready". Open the PR.
-2. Tick every box in its checklist. If it lists migrations, **push them to production first**.
-3. **Merge with "Create a merge commit"** (never squash).
-4. Within the hour a ✅ Slack confirms production is live and the tickets are Done. You do nothing else.
+Both apps release **weekly** through the release agent.
 
-If you get a **⏸️ held** message: merge the undo PR (or fix the ticket), then press **Run now** on the Release agent routine.
+1. **Thursday about 10am ET** a 🚀 Slack message arrives: "<app> release ready". Open the PR. Its head is a frozen branch `claude/promote-<DATE>` at the exact dev commit that was tested — later dev merges are not in it (they go out next week).
+2. Tick every box in its checklist. **BSR migrations:** merging applies them to production automatically (the `migrate-prod` workflow). Confirm each one is safe to run ahead of the code; never apply them by hand.
+3. **Merge with "Create a merge commit"** (never squash) — that keeps dev and main in step.
+4. Within the hour a ✅ Slack confirms production is live and the tickets are Done. You do nothing else. (If the merged head isn't the tested commit, you get a 🚨 instead and no ticket is marked Done.)
+
+If a newer release PR replaces an older one, the agent closes the old one with "Superseded by #<new>" — unless you put `hold` on it yourself; then it stays open for you to close.
+
+**Early release of one app:** ask Claude to run the release for that app now (e.g. "run the release for Arc now"), or press **Run now** on the Release agent routine with `APPS=arc` (or `APPS=bsr`) in the prompt. It does only that app.
+
+If you get a **⏸️ held** message: merge the undo PR (or fix the ticket), **wait about 5 minutes for dev to redeploy**, then press **Run now** on the Release agent routine. Undo and sync PRs open as **drafts** with the `hold` label: click "Ready for review", then merge with "Create a merge commit". If an undo PR says other tickets were reverted with it, move those back from Ready to Release.
+
+The PR-check routine must **never auto-merge a PR labelled `hold`** (its prompt already says so) — that label is what keeps undo, sync and held release PRs for you.
 
 If you get a **🚨** message: use the rollback steps in it (Vercel → project → Deployments → previous Production deployment → ⋯ → Instant Rollback). Rolling back code does not undo migrations.
 If you rolled back **on purpose**, comment `<!-- post-release-skip -->` on the release PR so the post-release check stops alerting about it.

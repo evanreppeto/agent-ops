@@ -20,11 +20,11 @@ Shared brains for the dev-pipeline agents (spec: `clone-BS-migration/docs/superp
    - Copy four values from Vercel (Settings → Environment Variables): `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for BSR (**dev/Preview** values) and for Arc. Put them in `agent-ops/.setup.env` (git-ignored) as `BSR_DEV_SUPABASE_URL=`, `BSR_DEV_SERVICE_ROLE_KEY=`, `ARC_SUPABASE_URL=`, `ARC_SERVICE_ROLE_KEY=`, then run `node scripts/create-qa-users.mjs`. The script deletes `.setup.env` after a successful run.
    - It creates `evan.reppeto5928+bsrqa@gmail.com` (approved admin on BSR dev) and `evan.reppeto5928+arcqa@gmail.com` (admin of Test Workspace only, no two-step), gives each a random password, and writes them to `.env`. It refuses BSR's production database and any database that isn't Arc's. Re-running it resets the passwords.
 4. **Cloud environment** (claude.ai/code → environments → new "agent-ops"):
-   - Network: Custom — allow `dev.bigshouldersmanager.com`, `dev.arc-studio.ai`, `uploads.linear.app`, `storage.googleapis.com`, plus defaults. Also allow:
+   - Network: Custom — allow `dev.bigshouldersmanager.com`, `dev.arc-studio.ai`, `uploads.linear.app`, `storage.googleapis.com`, `vercel.live`, `jbarlcajqpbzbhvbxaci.supabase.co` (BSR dev DB), `qqbecyrhnowmooyjiztz.supabase.co` (Arc DB), and tick "Also include default list of common package managers". Also allow:
      - each app's Supabase host (BSR's browser login calls Supabase directly): the host part of `NEXT_PUBLIC_SUPABASE_URL` in each app's Vercel **dev/preview** env (e.g. `<project-ref>.supabase.co`);
      - any third-party hosts the pages load (fonts, Sentry, analytics).
      Then run the setup check in the cloud and read its output and `test-results/*/console-errors.json`: every `net::ERR_` console error names a blocked host. Add hosts until it's clean.
-   - Setup script: `bash agent-ops/scripts/cloud-setup.sh`
+   - Setup script: paste the contents of `scripts/cloud-setup.sh` (it installs Chromium; it doesn't need the repo).
    - Environment variables: copy the four `*_QA_*` lines from `.env` (`open -e .env`) into the environment settings yourself.
 5. **Local check** (uses the `.env` from step 3):
 

@@ -49,6 +49,8 @@ Both apps release **weekly** through the release agent.
 3. **Merge with "Create a merge commit"** (never squash) — that keeps dev and main in step.
 4. Within the hour a ✅ Slack confirms production is live and the tickets are Done. You do nothing else. (If the merged head isn't the tested commit, you get a 🚨 instead and no ticket is marked Done.)
 
+A ticket is in the release only if a PR **carries** it: the id is in the PR title, its branch name, or right after "Fixes"/"Closes"/"Resolves"/"Completes"/"Implements" in the body. "Related to BSR-…", "Refs BSR-…" or a plain mention doesn't count — those show up as "Also mentioned (not part of this release)" and never hold the release.
+
 If a newer release PR replaces an older one, the agent closes the old one with "Superseded by #<new>" — unless you put `hold` on it yourself; then it stays open for you to close.
 
 **Early release of one app:** press **Run now** on the Release agent routine (or ask Claude to run it) with the exact text `APPS=arc` (or `APPS=bsr`) in the prompt. It does only that app. Without `APPS=`, it does both apps.

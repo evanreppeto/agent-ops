@@ -40,8 +40,9 @@ done
 
 ### 0b. Install and unit-test
 ```bash
-cd <AGENT_OPS> && npm ci && npx playwright install chromium && npm test
+cd <AGENT_OPS> && npm ci && npx playwright install chromium && bash scripts/trust-sandbox-ca.sh && npm test
 ```
+`trust-sandbox-ca.sh` makes the browser trust the cloud sandbox's HTTPS proxy (otherwise every page fails with `net::ERR_CERT_AUTHORITY_INVALID`). If it fails, stop and Slack (print in DRY_RUN): "QA agent: couldn't set up browser certificates — <error first line>." Never work around it by ignoring HTTPS errors.
 If unit tests fail, stop and Slack (in DRY_RUN, print it instead): "QA agent: agent-ops unit tests failing — no tickets tested."
 
 ### 0c. Arc test workspace

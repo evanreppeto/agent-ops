@@ -50,7 +50,7 @@
       "/equipment"
     ],
     "consoleBaseline": [
-      "WebSocket connection to 'wss://jbarlcajqpbzbhvbxaci.supabase.co/realtime"
+      "supabase.co/realtime/v1/websocket"
     ]
   },
   "arc": {

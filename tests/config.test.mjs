@@ -29,3 +29,11 @@ test("every app has smoke routes and a console baseline list", () => {
     assert.ok(Array.isArray(app.consoleBaseline), `${app.key} consoleBaseline`);
   }
 });
+
+test("bsr console baseline matches the realtime websocket error on dev and on prod", async () => {
+  const { withoutBaseline } = await import("../lib/console-baseline.mjs");
+  const base = getApp("bsr").consoleBaseline;
+  const dev = "WebSocket connection to 'wss://jbarlcajqpbzbhvbxaci.supabase.co/realtime/v1/websocket?apikey=x' failed";
+  const prod = "WebSocket connection to 'wss://tesgvrcgcyadownahujh.supabase.co/realtime/v1/websocket?apikey=x' failed";
+  assert.deepEqual(withoutBaseline([dev, prod, "TypeError: boom"], base), ["TypeError: boom"]);
+});

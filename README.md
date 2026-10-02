@@ -51,7 +51,10 @@ Both apps release **weekly** through the release agent.
 
 If a newer release PR replaces an older one, the agent closes the old one with "Superseded by #<new>" — unless you put `hold` on it yourself; then it stays open for you to close.
 
-**Early release of one app:** ask Claude to run the release for that app now (e.g. "run the release for Arc now"), or press **Run now** on the Release agent routine with `APPS=arc` (or `APPS=bsr`) in the prompt. It does only that app.
+**Early release of one app:** press **Run now** on the Release agent routine (or ask Claude to run it) with the exact text `APPS=arc` (or `APPS=bsr`) in the prompt. It does only that app. Without `APPS=`, it does both apps.
+
+Don't open your own dev → main PR (that week's release then isn't frozen).
+Don't click GitHub's "Update branch" on a release PR — it changes what was tested; ask for a re-run instead.
 
 If you get a **⏸️ held** message: merge the undo PR (or fix the ticket), **wait about 5 minutes for dev to redeploy**, then press **Run now** on the Release agent routine. Undo and sync PRs open as **drafts** with the `hold` label: click "Ready for review", then merge with "Create a merge commit". If an undo PR says other tickets were reverted with it, move those back from Ready to Release.
 

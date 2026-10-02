@@ -1,12 +1,26 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { test as base, expect } from "@playwright/test";
+import { withoutBaseline } from "../lib/console-baseline.mjs";
 
 export const test = base.extend({
+  // Every console error / page error seen during the test. Also saved as
+  // test-results/<test-folder>/console-errors.json (and attached to the report).
   consoleErrors: async ({ page }, use, testInfo) => {
     const errors = [];
     page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
     page.on("pageerror", (err) => errors.push(String(err)));
     await use(errors);
-    await testInfo.attach("console-errors.json", { body: JSON.stringify(errors, null, 2), contentType: "application/json" });
+    const body = JSON.stringify(errors, null, 2);
+    const file = testInfo.outputPath("console-errors.json");
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, body);
+    await testInfo.attach("console-errors.json", { body, contentType: "application/json" });
+  },
+  // newConsoleErrors(baseline) → console errors so far, minus any that contain a baseline string
+  // (the app's preflight setup-check errors). Use instead of editing the assertion by hand.
+  newConsoleErrors: async ({ consoleErrors }, use) => {
+    await use((baseline = []) => withoutBaseline(consoleErrors, baseline));
   },
   shot: async ({ page }, use, testInfo) => {
     let n = 0;

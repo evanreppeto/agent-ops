@@ -22,4 +22,10 @@ Shared brains for the dev-pipeline agents (spec: `clone-BS-migration/docs/superp
    - Network: Custom — allow `dev.bigshouldersmanager.com`, `dev.arc-studio.ai`, `uploads.linear.app`, `storage.googleapis.com`, plus defaults.
    - Setup script: `bash agent-ops/scripts/cloud-setup.sh`
    - Secrets: `BSR_QA_EMAIL`, `BSR_QA_PASSWORD`, `ARC_QA_EMAIL`, `ARC_QA_PASSWORD` — enter them yourself in the environment settings.
-5. **Local check**: put the same four vars in `agent-ops/.env` and run `npm run qa:check`.
+5. **Local check**: put the same four vars in `agent-ops/.env`, then run:
+
+```bash
+set -a && source .env && set +a && npm run qa:check
+```
+
+Expected: 3 tests pass and screenshots appear under `test-results/`.

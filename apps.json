@@ -35,6 +35,7 @@
       "submitSelector": "form[action=\"/api/auth/sign-in\"] button[type=\"submit\"]"
     },
     "credsEnv": { "email": "ARC_QA_EMAIL", "password": "ARC_QA_PASSWORD" },
+    "testWorkspace": "",
     "safety": [
       "Dev SHARES THE PRODUCTION DATABASE. Act only inside the test workspace; if the workspace switcher shows any other workspace as active, stop and mark the ticket blocked.",
       "Never approve-and-launch, send, or publish anything outbound (campaign launch, external send, email, social post). Drafting and approving inside the test workspace is fine."

@@ -40,6 +40,17 @@
     },
     "ignoreMissingResources": [
       "/avatars/"
+    ],
+    "smokeRoutes": [
+      "/",
+      "/projects",
+      "/schedule",
+      "/time-tracking",
+      "/clients",
+      "/equipment"
+    ],
+    "consoleBaseline": [
+      "WebSocket connection to 'wss://jbarlcajqpbzbhvbxaci.supabase.co/realtime"
     ]
   },
   "arc": {
@@ -76,6 +87,15 @@
     "deployProbe": {
       "path": "/login",
       "pattern": "[0-9a-f]{40}"
-    }
+    },
+    "smokeRoutes": [
+      "/v3",
+      "/v3/approvals",
+      "/v3/campaigns",
+      "/v3/records",
+      "/v3/studio",
+      "/v3/connections"
+    ],
+    "consoleBaseline": []
   }
 }

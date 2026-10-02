@@ -25,10 +25,11 @@ export const test = base.extend({
     writeFileSync(file, body);
     await testInfo.attach("console-errors.json", { body, contentType: "application/json" });
   },
-  // newConsoleErrors(baseline) → console errors so far, minus any that contain a baseline string
-  // (the app's preflight setup-check errors). Use instead of editing the assertion by hand.
-  newConsoleErrors: async ({ consoleErrors }, use) => {
-    await use((baseline = []) => withoutBaseline(consoleErrors, baseline));
+  // newConsoleErrors(extra) → console errors so far, minus the app's shared baseline (apps.json
+  // consoleBaseline) and any extra baseline strings (e.g. a ticket's preflight setup-check errors).
+  newConsoleErrors: async ({ consoleErrors }, use, testInfo) => {
+    const app = getApp(testInfo.project.name.split("-")[0]);
+    await use((extra = []) => withoutBaseline(consoleErrors, [...(app.consoleBaseline ?? []), ...extra]));
   },
   shot: async ({ page }, use, testInfo) => {
     let n = 0;

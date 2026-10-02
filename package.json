@@ -8,7 +8,8 @@
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\"",
     "qa": "playwright test",
-    "qa:check": "playwright test --grep @setup-check"
+    "qa:check": "playwright test --grep @setup-check",
+    "qa:smoke": "playwright test --grep @smoke"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

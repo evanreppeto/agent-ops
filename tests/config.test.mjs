@@ -21,3 +21,11 @@ test("appForRepo matches case-insensitively and returns null when unknown", () =
   assert.equal(appForRepo("EvanReppeto/Arc-Studio").key, "arc");
   assert.equal(appForRepo("someone/else"), null);
 });
+
+test("every app has smoke routes and a console baseline list", () => {
+  for (const app of listApps()) {
+    assert.ok(Array.isArray(app.smokeRoutes) && app.smokeRoutes.length >= 4, `${app.key} smokeRoutes`);
+    assert.ok(app.smokeRoutes.every((r) => r.startsWith("/")), `${app.key} routes are paths`);
+    assert.ok(Array.isArray(app.consoleBaseline), `${app.key} consoleBaseline`);
+  }
+});

@@ -17,7 +17,8 @@
     "credsEnv": { "email": "BSR_QA_EMAIL", "password": "BSR_QA_PASSWORD" },
     "safety": [
       "Dev has its own database: creating/editing/deleting test records is fine.",
-      "Never send email or SMS, never push to QuickBooks, never trigger payroll or invoice reminders — dev may still be wired to real Resend, Quo, and QuickBooks."
+      "Never send email or SMS, never push to QuickBooks, never trigger payroll or invoice reminders — dev may still be wired to real Resend, Quo, and QuickBooks.",
+      "Assume dev still has live Resend, Quo, and QuickBooks keys until Evan confirms otherwise: even an ordinary save can email or text real people, so avoid saves that notify customers, crews, or vendors unless the ticket requires it."
     ]
   },
   "arc": {
@@ -38,7 +39,8 @@
     "testWorkspace": "",
     "safety": [
       "Dev SHARES THE PRODUCTION DATABASE. Act only inside the test workspace; if the workspace switcher shows any other workspace as active, stop and mark the ticket blocked.",
-      "Never approve-and-launch, send, or publish anything outbound (campaign launch, external send, email, social post). Drafting and approving inside the test workspace is fine."
+      "Never approve-and-launch, send, or publish anything outbound (campaign launch, external send, email, social post). Drafting and approving inside the test workspace is fine.",
+      "Never set schedules or send windows, never activate or enable automations, never connect, authorize, or reconnect connectors/integrations — prod background jobs on the shared database (scheduled dispatch every minute, automations every 5 minutes) would act on them for real."
     ]
   }
 }

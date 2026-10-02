@@ -33,7 +33,11 @@
       "Never send email or SMS, never push to QuickBooks, never trigger payroll or invoice reminders — dev may still be wired to real Resend, Quo, and QuickBooks.",
       "Assume dev still has live Resend, Quo, and QuickBooks keys until Evan confirms otherwise: even an ordinary save can email or text real people, so avoid saves that notify customers, crews, or vendors unless the ticket requires it."
     ],
-    "qaEmail": "evan.reppeto5928+bsrqa@gmail.com"
+    "qaEmail": "evan.reppeto5928+bsrqa@gmail.com",
+    "deployProbe": {
+      "path": "/sw.js",
+      "pattern": "[0-9a-f]{12}"
+    }
   },
   "arc": {
     "name": "Arc Studio",
@@ -65,6 +69,10 @@
       "Never set schedules or send windows, never activate or enable automations, never connect, authorize, or reconnect connectors/integrations — prod background jobs on the shared database (scheduled dispatch every minute, automations every 5 minutes) would act on them for real."
     ],
     "qaEmail": "evan.reppeto5928+arcqa@gmail.com",
-    "testWorkspaceSlug": "test-workspace"
+    "testWorkspaceSlug": "test-workspace",
+    "deployProbe": {
+      "path": "/login",
+      "pattern": "[0-9a-f]{40}"
+    }
   }
 }

@@ -87,16 +87,21 @@ Process at most **5 tickets per run**, oldest merge first.
 Order for every ticket: 2a deploy check → 2b move to In QA → 2c understand → 2d write test → 2e run → 2f keep the test (pass only) → 2g report → 2h move → 2i Slack → 2j clean up.
 
 ### 2a. Wait for the deploy
-1. Using GitHub, find `deployedSha` = the newest commit on `dev` whose Vercel commit status is `success`.
-2. Check that `deployedSha` contains `mergeSha` with the local clone:
+1. Read which commit the dev site is serving, straight from the site (the cloud GitHub access can't read Vercel deploy statuses):
+   ```bash
+   node <AGENT_OPS>/scripts/deployed-sha.mjs <appKey>
+   ```
+   It prints a sha (Arc: full 40 chars; BSR: the first 12). If it exits non-zero, skip this app's tickets this run (no comment).
+2. Resolve it to a full commit and check it contains `mergeSha`:
    ```bash
    git -C <APP_REPO> fetch origin dev
-   git -C <APP_REPO> merge-base --is-ancestor <mergeSha> <deployedSha>; echo "exit=$?"
+   deployedSha=$(git -C <APP_REPO> rev-parse --verify "<printed sha>^{commit}")
+   git -C <APP_REPO> merge-base --is-ancestor <mergeSha> "$deployedSha"; echo "exit=$?"
    ```
-   If git says an object is missing (shallow clone), fetch the two commits and retry once: `git -C <APP_REPO> fetch origin <mergeSha> <deployedSha>` (add `--deepen=200` if it still can't find a common history).
+   If git says an object is missing (shallow clone), run `git -C <APP_REPO> fetch --deepen=200 origin dev` and retry once.
    - `exit=0` → the dev site includes the change; continue.
    - `exit=1` → not deployed yet; skip this ticket this run (no comment). It will be picked up next hour.
-3. Fallback only if git still errors: GitHub compare `GET /repos/{repo}/compare/{mergeSha}...{deployedSha}`. Status `identical` or `ahead` → deployed; anything else → skip this run.
+   - Any other error → skip this ticket this run (no comment) and mention it in the final summary.
 
 ### 2b. Move to In QA (if In Review)
 (Skip in DRY_RUN.)

@@ -14,20 +14,24 @@ Shared brains for the dev-pipeline agents (spec: `clone-BS-migration/docs/superp
    - Under GitHub integration → "On PR merge": for target branch `dev`, set status **In QA** (so merges to dev don't jump to Done).
    - Label **qa-failed** (red) — Claude can create this one.
 2. **Slack**: create channel `#agent-pipeline`. If you use a different name, set `SLACK_CHANNEL` in the cloud environment.
-3. **QA logins**:
-   - BSR dev: a user with admin role on the dev database.
-   - BSR dev outbound: confirm the dev deployment's Vercel env has no live Resend, Quo, or QuickBooks keys (remove them or use sandbox keys) — ordinary saves on dev can email/text real people.
-   - Arc dev: a user who is a member of the **test workspace only**, with two-step **off**. Use an email you don't mind receiving "new sign-in" alerts on.
-   - Arc dev shares the **production** database, and prod background jobs (scheduled dispatch every minute, automations every 5 minutes) act on it. The test workspace must have no connected email/SMS/social/webhook/CRM senders and no active automations. Confirm this before setting `testWorkspace`.
-   - In `apps.json`, set `arc.testWorkspace` to the test workspace's exact name as shown in Arc's workspace switcher. Until it's set, the QA agent skips Arc entirely and posts one Slack line per run: "QA agent: Arc test workspace not configured."
+3. **QA logins** — one command creates both and saves them to `.env`:
+   - BSR dev outbound: first confirm the dev deployment's Vercel env has no live Resend, Quo, or QuickBooks keys (remove them or use sandbox keys) — ordinary saves on dev can email/text real people.
+   - Arc dev shares the **production** database, and prod background jobs (scheduled dispatch every minute, automations every 5 minutes) act on it. The test workspace (`arc.testWorkspace` = "Test Workspace") must have no connected email/SMS/social/webhook/CRM senders and no active automations.
+   - Copy four values from Vercel (Settings → Environment Variables): `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for BSR (**dev/Preview** values) and for Arc. Then run, from this folder:
+
+     ```bash
+     read -s -p "BSR dev URL: " BSR_DEV_SUPABASE_URL; echo; read -s -p "BSR dev service key: " BSR_DEV_SERVICE_ROLE_KEY; echo; read -s -p "Arc URL: " ARC_SUPABASE_URL; echo; read -s -p "Arc service key: " ARC_SERVICE_ROLE_KEY; echo; export BSR_DEV_SUPABASE_URL BSR_DEV_SERVICE_ROLE_KEY ARC_SUPABASE_URL ARC_SERVICE_ROLE_KEY; node scripts/create-qa-users.mjs
+     ```
+
+   - It creates `evan.reppeto5928+bsrqa@gmail.com` (approved admin on BSR dev) and `evan.reppeto5928+arcqa@gmail.com` (admin of Test Workspace only, no two-step), gives each a random password, and writes them to `.env`. It refuses BSR's production database and any database that isn't Arc's. Re-running it resets the passwords.
 4. **Cloud environment** (claude.ai/code → environments → new "agent-ops"):
    - Network: Custom — allow `dev.bigshouldersmanager.com`, `dev.arc-studio.ai`, `uploads.linear.app`, `storage.googleapis.com`, plus defaults. Also allow:
      - each app's Supabase host (BSR's browser login calls Supabase directly): the host part of `NEXT_PUBLIC_SUPABASE_URL` in each app's Vercel **dev/preview** env (e.g. `<project-ref>.supabase.co`);
      - any third-party hosts the pages load (fonts, Sentry, analytics).
      Then run the setup check in the cloud and read its output and `test-results/*/console-errors.json`: every `net::ERR_` console error names a blocked host. Add hosts until it's clean.
    - Setup script: `bash agent-ops/scripts/cloud-setup.sh`
-   - Secrets: `BSR_QA_EMAIL`, `BSR_QA_PASSWORD`, `ARC_QA_EMAIL`, `ARC_QA_PASSWORD` — enter them yourself in the environment settings.
-5. **Local check**: put the same four vars in `agent-ops/.env`, then run:
+   - Environment variables: copy the four `*_QA_*` lines from `.env` (`open -e .env`) into the environment settings yourself.
+5. **Local check** (uses the `.env` from step 3):
 
 ```bash
 set -a && source .env && set +a && npm run qa:check

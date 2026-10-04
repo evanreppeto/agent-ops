@@ -146,6 +146,8 @@ If no `RELEASE` PR remains to process and nothing was sent for an `OLD` PR → p
 
 ## 2. Is production serving it?
 
+This run is triggered whenever any PR closes, so most runs find "No new releases." in §1 and must stop there immediately (before `npm ci` or anything else in §0b/§2).
+
 ```bash
 git -C <APP_REPO> fetch origin main
 node <AGENT_OPS>/scripts/deployed-sha.mjs <app> --prod
@@ -155,9 +157,9 @@ git -C <APP_REPO> merge-base --is-ancestor <MERGE_SHA> <PROD_SHA>; echo "exit=$?
 The script prints the commit **production** serves (BSR: first 12 chars from `/sw.js`; Arc: 40 chars from `/login`) — it must match `^[0-9a-f]{12,40}$` before you paste it. The second command resolves it to a full `<PROD_SHA>`; if either the `rev-parse` or the `merge-base --is-ancestor` command says an object is missing (`rev-parse` error, or `merge-base` exit `128`; shallow clone), run `git -C <APP_REPO> fetch --deepen=200 origin main` and retry that command once.
 
 - `exit=0` → production includes the release; continue to §3.
-- `exit=1` (not yet) and `<AGE>` < 60 → **skip this PR this run.** No Slack, no marker. The next hourly run checks again.
-- `exit=1` and `<AGE>` ≥ 60 → 🚨 Slack (§7): ``🚨 <app name>: Production hasn't picked up <PR url> after an hour — check Vercel. If you rolled back on purpose, comment `&lt;!-- post-release-skip --&gt;` on the PR to stop these alerts.`` Add the rollback line only if production looks broken (it is not here: it simply hasn't deployed). **Stop for this app** (no marker, so the next run checks again).
-- The script exits non-zero, the sha does not resolve, or any other git error → treat as "not yet": same age rule, and mention the error's first line in the Slack message if it came to that.
+- `exit=1` (not yet) → **wait, don't skip.** Repeat the `deployed-sha.mjs <app> --prod` + `rev-parse` + `merge-base` commands every 60 seconds (`sleep 60`) for up to **20 minutes**. As soon as `exit=0`, continue to §3. If it is still not live after 20 minutes, take the 🚨 path below.
+- Still `exit=1` after the 20-minute wait → 🚨 Slack (§7): ``🚨 <app name>: Production hasn't picked up <PR url> after 20 minutes — check Vercel. If you rolled back on purpose, comment `&lt;!-- post-release-skip --&gt;` on the PR to stop these alerts.`` Add the rollback line only if production looks broken (it is not here: it simply hasn't deployed). **Stop for this app** (no marker, so the next merge event checks again).
+- The script exits non-zero, the sha does not resolve, or any other git error → treat as "not yet": same 20-minute wait, and mention the error's first line in the Slack message if it came to that.
 
 ## 3. Read-only production check (no login)
 

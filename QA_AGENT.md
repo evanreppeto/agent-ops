@@ -73,6 +73,8 @@ Skip every ticket for an app that isn't usable this run — no comment, no marke
 
 ## 1. Find tickets
 
+This run is usually triggered by a PR merging, but it must still process **every** eligible ticket below (not only the ticket for the PR that triggered it).
+
 In Linear team **Big Shoulders Restoration**, list issues with status **In Review** or **In QA**. For each:
 
 1. Find its linked GitHub PR(s) (issue attachments / links). Keep only PRs in `evanreppeto/clone-BS-migration` or `evanreppeto/arc-studio` (use `appForRepo` from `<AGENT_OPS>/lib/config.mjs`). That gives the ticket's `appKey` and `<APP_REPO>`. If that app isn't usable this run (step 0), skip the ticket.
@@ -101,7 +103,7 @@ Order for every ticket: 2a deploy check → 2b move to In QA → 2c understand �
    ```
    If git says an object is missing (shallow clone), run `git -C <APP_REPO> fetch --deepen=200 origin dev` and retry once.
    - `exit=0` → the dev site includes the change; continue.
-   - `exit=1` → not deployed yet; skip this ticket this run (no comment). It will be picked up next hour.
+   - `exit=1` → not deployed yet. Do not skip yet: wait for the deploy by repeating step 1 and this check every 60 seconds (`sleep 60`) for up to **15 minutes**. As soon as `exit=0`, continue. If it is still not deployed after 15 minutes, skip this ticket this run (no comment) and say in the final summary that it will be picked up on the next merge event.
    - Any other error → skip this ticket this run (no comment) and mention it in the final summary.
 
 ### 2b. Move to In QA (if In Review)

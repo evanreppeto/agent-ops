@@ -130,6 +130,8 @@ cd <WT> && timeout 540 sh -c '<cmd>' > /tmp/<app>-pr-<n>-check-<i>.log 2>&1; ech
 ```
 Pass the Bash tool a `timeout` of 600000 (its 10-minute cap). `exit=124` — or the Bash tool itself timing out — → `could not run (timeout)`. A command that fails because the sandbox lacks an env var, secret or network service is `could not run (env)`, not a failure. For lint, only errors count. Both `could not run` results count as **not verified**.
 
+**Flaky re-run.** If a check fails (non-zero exit, not a timeout or `could not run`), re-run that same command once, with the same form, into a second log (`/tmp/<app>-pr-<n>-check-<i>-rerun.log`) before counting it. A failure that doesn't repeat is a flaky test: count the check as `pass` and add `flaky: <test name>` to the result (the **Review** line; the table row stays `pass`). A failure that repeats goes to the base check below.
+
 **Base check** for each failing command: run it once on the dev commit this PR was checked against, in a base worktree `<BASE>` = `/tmp/base-<app>-<first 7 of /tmp/<app>-pr-<n>-dev.txt>`: if `<BASE>` doesn't exist yet, create it (`git -C <APP_REPO> worktree add --detach <BASE> "$(cat /tmp/<app>-pr-<n>-dev.txt)"`, then `cd <BASE> && pnpm install --frozen-lockfile`); if it exists, reuse it as is. Then the same form: `cd <BASE> && timeout 540 sh -c '<cmd>'`. Then compare, using the logs (`/tmp/<app>-pr-<n>-check-<i>.log` and your base log): for the `REQUIRED` checks, list the failing test names or error lines on the PR and on dev.
 - The PR adds none that dev doesn't also have → the result is `fails on dev too (same failures)`: not counted against the PR, and it **counts as verified** for the §5 merge gate.
 - The PR has any failure dev doesn't → that is a FAIL, as usual.

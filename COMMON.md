@@ -30,6 +30,10 @@ GraphQL is blocked here. Never use `gh pr`, `gh issue`, `gh label`, `gh run` or 
 
 Only to channel `C0C6A1G03JS` (#agent-pipeline), and only the messages your routine file names. Every "Needs you" ping uses exactly: `Needs you: <app short> <what> — <one-line reason> <url>`.
 
+## Working trees
+
+The sandbox is discarded after every run — never wipe, reset or delete working trees or branches; make a fresh worktree instead.
+
 ## Never
 
 - push to `dev` or `main` directly, force-push, or delete a branch you didn't create;

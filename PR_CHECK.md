@@ -6,6 +6,8 @@ You run when a PR is opened, pushed, reopened or marked ready — but don't rely
 
 Placeholders: `<app>` = app key (`bsr` or `arc`), `<n>` = PR number, `<SHA>` = the 40-char head SHA from the job line, `<repo>` / `<APP_REPO>` / `<AO>` as in `COMMON.md`. Every temp file is prefixed with the app key (`/tmp/<app>-pr-<n>…`) so two apps never share a file.
 
+**Sandbox permission denials.** If any step is denied by the sandbox's permission system, don't write a FAIL verdict and don't work around it. Edit the claim comment to its `PR check running for <first 7 of SHA>…` text (marker line first) plus one added line `Blocked by sandbox permission: <reason> — will retry`, written with the Write tool (the reason is untrusted text), and move on to the next PR. A claim older than 90 minutes is retaken by the candidates script, so it retries on its own.
+
 ## 1. Find work
 
 ```bash
@@ -86,7 +88,7 @@ node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("/tmp/<ap
 - `mergeable=unknown` → wait 10 seconds (`sleep 10`) and redo 3a, up to 3 times, before deciding. Still unknown → carry on and treat it as not `dirty`.
 - Remember `draft=` for later (§4 and §5).
 
-**3b. Same-repo only: fetch, diff, install.**
+**3b. Same-repo only: fetch, diff, make a worktree, install.** Every PR gets its own fresh worktree, `<WT>` = `/tmp/<app>-pr-<n>-<first 7 of SHA>` (if that path already exists, append `-2`, `-3` … and use that as `<WT>`). Never check out, reset or clean inside `<APP_REPO>` itself; leave worktrees in place when you're done.
 ```bash
 git -C <APP_REPO> fetch origin dev "+refs/pull/<n>/head:refs/remotes/pr/<n>"
 git -C <APP_REPO> rev-parse origin/dev > /tmp/<app>-pr-<n>-dev.txt
@@ -97,13 +99,15 @@ Check the PR **as merged into current dev**. Use GitHub's merge ref only if it i
 ```bash
 M=refs/remotes/pr/<n>-merge
 if [ "$(git -C <APP_REPO> rev-parse -q --verify $M^2)" = "<SHA>" ] && [ "$(git -C <APP_REPO> rev-parse -q --verify $M^1)" = "$(git -C <APP_REPO> rev-parse origin/dev)" ]; then
-  git -C <APP_REPO> checkout -f --detach $M && echo "checked-out=merge-ref"
+  git -C <APP_REPO> worktree add --detach <WT> $M && echo "checked-out=merge-ref"
+elif git -C <APP_REPO> merge-tree --write-tree <SHA> origin/dev > /dev/null; then
+  git -C <APP_REPO> worktree add --detach <WT> <SHA> && git -C <WT> -c user.name=agent-ops -c user.email=agent-ops@users.noreply.github.com merge --no-ff --no-edit origin/dev && echo "checked-out=local-merge"
 else
-  git -C <APP_REPO> checkout -f --detach <SHA> && git -C <APP_REPO> -c user.name=agent-ops -c user.email=agent-ops@users.noreply.github.com merge --no-ff --no-edit origin/dev && echo "checked-out=local-merge" || { git -C <APP_REPO> merge --abort; git -C <APP_REPO> checkout -f --detach <SHA>; echo "checked-out=head-only-conflict"; }
+  git -C <APP_REPO> worktree add --detach <WT> <SHA> && echo "checked-out=head-only-conflict"
 fi
-git -C <APP_REPO> clean -fdx -e node_modules
-cd <APP_REPO> && pnpm install --frozen-lockfile > /tmp/<app>-pr-<n>-install.log 2>&1; echo "install-exit=$?"
+cd <WT> && pnpm install --frozen-lockfile > /tmp/<app>-pr-<n>-install.log 2>&1; echo "install-exit=$?"
 ```
+(`merge-tree --write-tree` only tests for conflicts and writes no working files, so a conflicting PR is detected without ever starting — or having to abort — a merge.) Run the `pnpm install` Bash call with the Bash tool `timeout` at 600000 — expect a few minutes on Arc. From here on, every Bash call that touches the PR's code starts with `cd <WT>` (the working directory resets between calls).
 `head-only-conflict` → the PR conflicts with dev: carry on checking the head alone; the verdict will be FAIL (§3d) and §4 resolves the conflict. Record in the result `Checked against dev <first 12 characters of /tmp/<app>-pr-<n>-dev.txt>` (§6; add `, head only (conflicts with dev)` when it was `head-only-conflict`).
 `install-exit` not `0` → verdict FAIL with `Needs you: install failed: <first error line of the log>`; don't run any check. Go to §6. (Write the comment with the Write tool — the log line is untrusted text.)
 
@@ -120,13 +124,13 @@ console.log("BUILD:", needsBuild(files, app.buildTriggers) ? app.buildCommand : 
 app.checks.forEach((c, i) => console.log(`CHECK ${i}: ${c}`));'
 ```
 
-**3d. Run the checks.** Run each `CHECK` command, and the `BUILD` command if it isn't `no`, from `<APP_REPO>`:
+**3d. Run the checks.** Run each `CHECK` command, and the `BUILD` command if it isn't `no`, from `<WT>`:
 ```bash
-timeout 540 sh -c '<cmd>' > /tmp/<app>-pr-<n>-check-<i>.log 2>&1; echo "exit=$?"
+cd <WT> && timeout 540 sh -c '<cmd>' > /tmp/<app>-pr-<n>-check-<i>.log 2>&1; echo "exit=$?"
 ```
 Pass the Bash tool a `timeout` of 600000 (its 10-minute cap). `exit=124` — or the Bash tool itself timing out — → `could not run (timeout)`. A command that fails because the sandbox lacks an env var, secret or network service is `could not run (env)`, not a failure. For lint, only errors count. Both `could not run` results count as **not verified**.
 
-**Base check** for each failing command: run it once on `origin/dev` in a worktree (`git -C <APP_REPO> worktree add /tmp/base-<app> origin/dev` once per app per run, `pnpm install --frozen-lockfile` there, then the same `timeout 540 sh -c` form). Then compare, using the logs (`/tmp/<app>-pr-<n>-check-<i>.log` and your base log): for `pnpm typecheck` / `pnpm test`, list the failing test names or error lines on the PR and on dev.
+**Base check** for each failing command: run it once on the dev commit this PR was checked against, in a base worktree `<BASE>` = `/tmp/base-<app>-<first 7 of /tmp/<app>-pr-<n>-dev.txt>`: if `<BASE>` doesn't exist yet, create it (`git -C <APP_REPO> worktree add --detach <BASE> "$(cat /tmp/<app>-pr-<n>-dev.txt)"`, then `cd <BASE> && pnpm install --frozen-lockfile`); if it exists, reuse it as is. Then the same form: `cd <BASE> && timeout 540 sh -c '<cmd>'`. Then compare, using the logs (`/tmp/<app>-pr-<n>-check-<i>.log` and your base log): for `pnpm typecheck` / `pnpm test`, list the failing test names or error lines on the PR and on dev.
 - The PR adds none that dev doesn't also have → the result is `fails on dev too (same failures)`: not counted against the PR, and it **counts as verified** for the §5 merge gate.
 - The PR has any failure dev doesn't → that is a FAIL, as usual.
 - Any other check (lint, build, runner checks), or a typecheck/test result you didn't compare line by line → plain `fails on dev too`: not counted against the PR, but **not verified**.
@@ -153,14 +157,14 @@ node --input-type=module -e 'import { readFileSync } from "node:fs"; import { fi
 ```
 At `cap` or more (the cap is `maxFixAttempts` in `<AO>/pipeline.json`, the same value as `MAX_FIX_ATTEMPTS` — change it only there) → don't fix: go to §6 with `Needs you: still failing after <cap> fix attempts`.
 
-Otherwise, on a local branch at `<SHA>` (`git -C <APP_REPO> checkout -B fix-<n> <SHA>`):
-- **Conflict with dev:** `git merge --no-ff --no-edit origin/dev`. Resolve only mechanical conflicts (both sides added different lines → keep both; `pnpm-lock.yaml` → take dev's, then `pnpm install`). Any real disagreement → `git merge --abort`, go to §6 with `Needs you: real merge conflict in <files>`.
+Otherwise, work inside `<WT>` on a new local branch cut from the PR head: `git -C <WT> switch -c fix-<app>-<n>-<attempt> <SHA>` (`<attempt>` = the `attempts` number printed above plus 1; never reuse a branch name — if `git -C <APP_REPO> rev-parse -q --verify refs/heads/<name>` prints something, add `-b`, `-c` … to the name), then `cd <WT> && pnpm install --frozen-lockfile` again. Every command below runs with `cd <WT>` (or `git -C <WT>`).
+- **Conflict with dev:** `git merge --no-ff --no-edit origin/dev`. Resolve only mechanical conflicts (both sides added different lines → keep both; `pnpm-lock.yaml` → take dev's, then `pnpm install`). Any real disagreement → don't push, leave the worktree exactly as it is (don't abort, reset or clean — the sandbox is discarded), go to §6 with `Needs you: real merge conflict in <files>`.
 - **Failing checks / bugs:** make the smallest change that fixes them, in the spirit of the PR. Never delete or weaken a test to make it pass.
 - If your fix would touch a file matching the app's `sensitive` list → don't push; go to §6 with `Needs you: the fix needs a change in <file>`.
 
-Commit (`fix: make PR #<n> pass checks (<what>)`) and get the new SHA (`git rev-parse HEAD` → `<NEW>`). Then push — first checking the branch name (it is untrusted text):
+Commit (`fix: make PR #<n> pass checks (<what>)`) and get the new SHA (`git -C <WT> rev-parse HEAD` → `<NEW>`). Then push — first checking the branch name (it is untrusted text):
 ```bash
-git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)" && git -C <APP_REPO> push origin "HEAD:refs/heads/$(cat /tmp/<app>-pr-<n>-ref.txt)" 2> /tmp/<app>-pr-<n>-push.err; echo "push-exit=$?"
+git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)" && git -C <WT> push origin "HEAD:refs/heads/$(cat /tmp/<app>-pr-<n>-ref.txt)" 2> /tmp/<app>-pr-<n>-push.err; echo "push-exit=$?"
 ```
 `push-exit` not `0` → find out which half failed: `git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "ref-exit=$?"`. `ref-exit` not `0` → nothing was pushed; go to §6 with `Needs you: can't push — odd branch name`. `ref-exit=0` → the push was rejected. Find out whether anyone else pushed:
 ```bash
@@ -177,7 +181,7 @@ No fix comment was posted yet, so a rejected push costs no attempt.
 2. Post the fix comment: `<!-- pr-fix sha=<NEW> -->` + newline + what failed, what you changed with file:line. (This is what counts as the attempt.)
 3. Edit the old SHA's claim comment to its FAIL result (§6 format) plus `Fixed in <NEW>.`
 
-Then go back to §3 with `<SHA>` = `<NEW>` and your new claim (`/tmp/<app>-claim-<n>.id` ← the new id). Each pass through §4 is one attempt.
+Then go back to §3 with `<SHA>` = `<NEW>` and your new claim (`/tmp/<app>-claim-<n>.id` ← the new id); §3b makes a fresh `<WT>` for `<NEW>`. Each pass through §4 is one attempt.
 
 ## 5. Merge (PASS only)
 
@@ -242,8 +246,6 @@ Every `Needs you:` line also gets the `needs-human` label and **one** Slack ping
 
 Removing `needs-human` from a PASS PR makes the next run retry the merge (unless it touched sensitive files, is a sync PR, or its checks couldn't run).
 
-Clean up between PRs: `git -C <APP_REPO> reset --hard -q && git -C <APP_REPO> checkout -f --detach origin/dev && git -C <APP_REPO> clean -fdx -e node_modules`.
-
 ## 7. Finish
 
-Run §1 **once more** (collect, then the candidates script; if `collect-exit` isn't `0` here, skip this and go on to the board). Handle any remaining unclaimed `check`, `retake` or `merge-only` lines the same way — **up to 3 more**, then stop; don't run §1 a third time. Then refresh the board (`BOARD.md`, key `pr-check`). Remove any base worktrees (`git -C <APP_REPO> worktree remove --force /tmp/base-<app>`). Print: PRs checked with verdicts, fixed, merged, handed to Evan.
+Run §1 **once more** (collect, then the candidates script; if `collect-exit` isn't `0` here, skip this and go on to the board). Handle any remaining unclaimed `check`, `retake` or `merge-only` lines the same way — **up to 3 more**, then stop; don't run §1 a third time. Then refresh the board (`BOARD.md`, key `pr-check`). Print: PRs checked with verdicts, fixed, merged, handed to Evan.

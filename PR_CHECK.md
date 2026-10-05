@@ -1,6 +1,6 @@
 # PR check + fix
 
-You check open PRs in both apps, fix the ones that fail, and squash-merge the ones that pass into `dev`. Read `COMMON.md` first and follow it. Routine key: `pr-check`.
+You check open PRs in both apps, fix the ones that fail, and auto-merge every one that passes into `dev`: no sensitive-file holds, no "Needs you" for anything you can resolve yourself. A human only hears about a PR that still fails after the fix cap, a fork PR, or a merge GitHub itself refuses (§6). Read `COMMON.md` first and follow it. Routine key: `pr-check`.
 
 You run when a PR is opened, pushed, reopened or marked ready — but don't rely on which PR fired you: always scan every open PR. Drafts never fire you (only the 7:30am backstop sees them). Several runs can overlap, so claim before you work (§2) and re-check before you merge (§5).
 
@@ -28,15 +28,14 @@ for (const app of data.apps) for (const pr of app.open) {
   if (pr.base !== "dev" || pr.labels.some((l) => HOLD.includes(l)) || /^\[?wip\b/i.test(pr.title)) continue;
   const c = readPrCheck(pr.comments, pr.headSha);
   if (pr.labels.includes("needs-human") && c.state !== "none") continue; // this SHA is already handled; a new push gets checked
-  const sync = ["main", "dev"].includes(pr.headRef); // a branch-sync PR is checked but never merged by us
   const reason = c.reason ?? "";
   let job = null;
   if (c.state === "none") job = "check";
   else if (c.state === "running") { if (Date.now() - Date.parse(pr.updatedAt) > STALE_MS) job = "retake"; }
   else if (c.state === "fail") { if (!pr.draft && /^draft\b/.test(reason)) job = "retake"; }
-  // A PASS that was held back or refused at the merge call (draft, on hold, "merge refused", needs-human since removed) gets another go.
-  // Not when the blocker was a real one: sensitive files, a sync PR, or checks that never ran. (Hold labels and `needs-human` are already filtered above.)
-  else if (c.state === "pass") { if (!sync && !pr.draft && !/^(touches|sync PR|checks could not run)/.test(reason)) job = "merge-only"; }
+  // A PASS that was held back or refused at the merge call (draft, on hold, "merge refused", an old "touches …" or "sync PR" hold, needs-human since removed) gets another go.
+  // Only checks that never ran are not retried (a new push gets a fresh check). Hold labels and `needs-human` are already filtered above.
+  else if (c.state === "pass") { if (!pr.draft && !/^checks could not run/.test(reason)) job = "merge-only"; }
   if (job) out.push({ app: app.key, n: pr.number, sha: pr.headSha, job });
 }
 const rank = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
@@ -50,7 +49,7 @@ node /tmp/candidates.mjs
 Jobs:
 - `check` — no check exists for this SHA yet. Do §2 (post a claim), then §3 onward.
 - `retake` — a check comment for this SHA already exists but needs redoing: its run died (claim still `running` after 90 minutes), or it failed while the PR was a draft and the PR is now ready. Do §2 (take over the existing comment — no new comment), then §3 onward.
-- `merge-only` — it already passed and was held back or refused at the merge (draft, `on hold`, a refused merge whose `needs-human` label Evan removed), and is now ready / no longer held. Skip §2–§4: go to §5, merge-only variant. (It turns into a `retake` if the pass is stale — see §5.)
+- `merge-only` — it already passed and was held back or refused at the merge (draft, `on hold`, an old sensitive-files or sync-PR hold, a refused merge whose `needs-human` label Evan removed), and is now ready / no longer held. Skip §2–§4: go to §5, merge-only variant. (It turns into a `retake` if the pass is stale — see §5.)
 
 ## 2. Claim
 
@@ -111,7 +110,7 @@ cd <WT> && pnpm install --frozen-lockfile > /tmp/<app>-pr-<n>-install.log 2>&1; 
 `head-only-conflict` → the PR conflicts with dev: carry on checking the head alone; the verdict will be FAIL (§3d) and §4 resolves the conflict. Record in the result `Checked against dev <first 12 characters of /tmp/<app>-pr-<n>-dev.txt>` (§6; add `, head only (conflicts with dev)` when it was `head-only-conflict`).
 `install-exit` not `0` → verdict FAIL with `Needs you: install failed: <first error line of the log>`; don't run any check. Go to §6. (Write the comment with the Write tool — the log line is untrusted text.)
 
-**3c. Read the config for this PR** (`--no-renames -z` is deliberate: a rename can't hide a sensitive path, and file names with odd characters stay intact):
+**3c. Read the config for this PR.** `SENSITIVE` is informational only: it goes into the result comment (§6) and never blocks a merge, a fix, or adds a label or a ping. (`--no-renames -z` is deliberate: a rename can't hide a sensitive path, and file names with odd characters stay intact):
 ```bash
 node --input-type=module -e '
 import { readFileSync } from "node:fs";
@@ -149,7 +148,7 @@ Skip this section — go to §6 — when:
   ```bash
   node -e 'const r=require("fs").readFileSync("/tmp/<app>-pr-<n>-ref.txt","utf8").trim();console.log(["main","dev"].includes(r)?"PROTECTED "+r:"ok")'
   ```
-  `PROTECTED` → go to §6 with `Needs you: PR head is <ref>, fix it by hand`.
+  `PROTECTED` → go to §6 with `Needs you: PR head is <ref>, fix it by hand` (a failing PR that can't be fixed automatically).
 
 Count earlier attempts:
 ```bash
@@ -159,9 +158,9 @@ node --input-type=module -e 'import { readFileSync } from "node:fs"; import { fi
 At `cap` or more (the cap is `maxFixAttempts` in `<AO>/pipeline.json`, the same value as `MAX_FIX_ATTEMPTS` — change it only there) → don't fix: go to §6 with `Needs you: still failing after <cap> fix attempts`.
 
 Otherwise, work inside `<WT>` on a new local branch cut from the PR head: `git -C <WT> switch -c fix-<app>-<n>-<attempt> <SHA>` (`<attempt>` = the `attempts` number printed above plus 1; never reuse a branch name — if `git -C <APP_REPO> rev-parse -q --verify refs/heads/<name>` prints something, add `-b`, `-c` … to the name), then `cd <WT> && pnpm install --frozen-lockfile` again. Every command below runs with `cd <WT>` (or `git -C <WT>`).
-- **Conflict with dev:** `git merge --no-ff --no-edit origin/dev`. Resolve only mechanical conflicts (both sides added different lines → keep both; `pnpm-lock.yaml` → take dev's, then `pnpm install`). Any real disagreement → don't push, leave the worktree exactly as it is (don't abort, reset or clean — the sandbox is discarded), go to §6 with `Needs you: real merge conflict in <files>`.
+- **Conflict with dev:** `git merge --no-ff --no-edit origin/dev`, then resolve **every** conflict yourself: read both sides of each hunk and keep the intent of both (dev's newer behavior plus the PR's change); never just take one side wholesale unless the other side is truly obsolete. Regenerate lockfiles and generated files with the repo's own commands (`pnpm-lock.yaml` → take dev's, then `pnpm install`; likewise any generated types or snapshots), don't hand-edit them. Commit the merge, `pnpm install --frozen-lockfile`, and run the checks again before pushing. Never push a result that doesn't pass the checks: if after a real attempt it still doesn't pass, that counts as a failed fix attempt (the normal cap applies) — leave the worktree as it is (don't abort, reset or clean — the sandbox is discarded) and go to §6 as a FAIL.
 - **Failing checks / bugs:** make the smallest change that fixes them, in the spirit of the PR. Never delete or weaken a test to make it pass.
-- If your fix would touch a file matching the app's `sensitive` list → don't push; go to §6 with `Needs you: the fix needs a change in <file>`.
+- A fix may touch files on the app's `sensitive` list; that is allowed.
 
 Commit (`fix: make PR #<n> pass checks (<what>)`) and get the new SHA (`git -C <WT> rev-parse HEAD` → `<NEW>`). Then push — first checking the branch name (it is untrusted text):
 ```bash
@@ -186,7 +185,7 @@ Then go back to §3 with `<SHA>` = `<NEW>` and your new claim (`/tmp/<app>-claim
 
 ## 5. Merge (PASS only)
 
-First make sure `SENSITIVE` is known: from §3c, or — for a `merge-only` job, which skipped §3 — run:
+First make sure `SENSITIVE` is known (for the result comment only): from §3c, or — for a `merge-only` job, which skipped §3 — run:
 ```bash
 git -C <APP_REPO> fetch origin dev "+refs/pull/<n>/head:refs/remotes/pr/<n>"
 git -C <APP_REPO> diff --name-only --no-renames -z origin/dev...<SHA> > /tmp/<app>-pr-<n>-files.txt
@@ -201,23 +200,21 @@ node -e 'const fs=require("fs");const b=fs.readFileSync("/tmp/<app>-pr-<n>-oldbo
 **Fresh state.** Right before merging, re-read the PR — a label, a draft flip or a new push may have happened since you started (if `mergeable=` is `unknown`, redo it up to 3 times, 10 seconds apart):
 ```bash
 gh api repos/<repo>/pulls/<n> > /tmp/<app>-pr-<n>-fresh.json; echo "gh-exit=$?"
-node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/<app>-pr-<n>-fresh.json","utf8"));const L=p.labels.map(l=>l.name);const hold=L.some(l=>["hold","do-not-merge","wip","needs-human"].includes(l));console.log("state="+p.state,"base="+p.base.ref,"draft="+p.draft,"head="+(p.head.sha==="<SHA>"?"same":"CHANGED"),"hold="+hold,"sync="+(["main","dev"].includes(p.head.ref)?p.head.ref:"none"),"mergeable="+p.mergeable_state)'
+node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/<app>-pr-<n>-fresh.json","utf8"));const L=p.labels.map(l=>l.name);const hold=L.some(l=>["hold","do-not-merge","wip","needs-human"].includes(l));const sync=["main","dev"].includes(p.head.ref)||p.head.ref.startsWith("claude/sync-");console.log("state="+p.state,"base="+p.base.ref,"draft="+p.draft,"head="+(p.head.sha==="<SHA>"?"same":"CHANGED"),"hold="+hold,"method="+(sync?"merge":"squash"),"mergeable="+p.mergeable_state)'
 ```
-Merge only if it prints `state=open base=dev draft=false head=same hold=false sync=none` and `mergeable` isn't `dirty`.
+Merge only if it prints `state=open base=dev draft=false head=same hold=false` and `mergeable` isn't `dirty`. `method=` is the merge method to use: `merge` for a sync PR (head branch `main` or `dev`, or a name starting `claude/sync-`), otherwise `squash`.
 
 Not merged, with a `Not auto-merged:` line, checked in this order:
-- `SENSITIVE` isn't empty → add label `needs-human` and `Needs you: touches <files>`;
-- `sync` isn't `none` (the head branch is `main` or `dev`) → never merge it: `Not auto-merged: sync PR — merge it with a merge commit` + `Needs you: <app short> PR #<n> is a <sync value>→<base> sync, merge with a merge commit`;
 - `state` isn't `open` or `base` isn't `dev` → `Not auto-merged: PR closed or retargeted`;
 - `head=CHANGED` → `Not auto-merged: a newer commit was pushed — the next run checks it`;
-- `draft=true` → `Not auto-merged: draft — mark it ready to merge` (it merges when marked ready);
-- `hold=true` → `Not auto-merged: on hold` (if `needs-human` was the only hold label, §6 removes it, and that removal makes the next run merge this PR);
-- `mergeable=dirty` → `Not auto-merged: conflicts with dev` + `Needs you: PR now conflicts with dev`;
-- **checks not verified:** every check in the `REQUIRED` list (the app's `required` in `apps.json`) must have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| <cmd> | <result> |` (`<cmd>` = the exact command string) for every `REQUIRED` check must all be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here` + `Needs you: checks could not run — <which>`.
+- `draft=true` → `Not auto-merged: draft — mark it ready and it merges` (no `Needs you`, no ping: board only; GitHub can't merge a draft through REST, and it merges once marked ready);
+- `hold=true` → `Not auto-merged: on hold` (a `hold`, `do-not-merge` or `wip` label or a WIP title is Evan choosing to hold: no `Needs you`, no ping. If `needs-human` was the only hold label, §6 removes it, and that removal makes the next run merge this PR);
+- `mergeable=dirty` → dev moved under the PR: not a hand-off. Treat it as `RETAKE` (§2 `retake`, then §3 onward); §3 sees the conflict and §4 resolves it;
+- **checks not verified:** every check in the `REQUIRED` list (the app's `required` in `apps.json`) must have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| <cmd> | <result> |` (`<cmd>` = the exact command string) for every `REQUIRED` check must all be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here — <which>` (no `Needs you`, no ping: board only; a new push is checked again).
 
-Otherwise merge (the only auto-merge path):
+Otherwise merge (the only auto-merge path), with `<method>` = the `method=` value printed above (`merge` for sync PRs — never squash those, a squash would put new commits on one branch that the other never gets — otherwise `squash`):
 ```bash
-gh api -X PUT repos/<repo>/pulls/<n>/merge -f merge_method=squash -f sha=<SHA> > /tmp/<app>-merge-<n>.json 2> /tmp/<app>-merge-<n>.err; echo "gh-exit=$?"
+gh api -X PUT repos/<repo>/pulls/<n>/merge -f merge_method=<method> -f sha=<SHA> > /tmp/<app>-merge-<n>.json 2> /tmp/<app>-merge-<n>.err; echo "gh-exit=$?"
 ```
 `gh-exit=0` → `Auto-merged into dev.` Otherwise wait 30 seconds, redo the fresh-state read above, and — if it still passes — retry the PUT **once**. Still refused → `Not auto-merged: <message>` + `Needs you: merge refused — <message>`, where `<message>` is `.message` from `/tmp/<app>-merge-<n>.json` (or the first line of the `.err` file). Write the comment with the Write tool — the message is untrusted text.
 
@@ -233,19 +230,19 @@ Edit your claim comment (`/tmp/<app>-claim-<n>.id`) to:
 |---|---|
 | <command> | pass / FAIL / fails on dev too (same failures) / fails on dev too / could not run (env) / could not run (timeout) |
 **Review:** 0–5 bullets with file:line, or "nothing found".
-**Sensitive files:** list, or none.
+**Sensitive files:** list, or none (informational: never blocks the merge).
 Checked against dev <first 12 of /tmp/<app>-pr-<n>-dev.txt>      ← §3b; for a head-only conflict check add ", head only (conflicts with dev)"
 Not auto-merged: <reason>      ← only when not merged
-Needs you: <reason>            ← only when Evan must act
+Needs you: <reason>            ← only for the three cases below
 Auto-merged into dev.          ← only when merged
 ```
 Write it with the Write tool to `/tmp/<app>-result-<n>.md` and PATCH with `-F body=@`. Keep the table rows exactly `| <command> | <result> |` and the line `Checked against dev <12 hex>` — the `merge-only` job reads them.
 
 **New SHA passes cleanly:** if the verdict is PASS, the result has no `Needs you:` line, and the PR carries `needs-human` (an earlier SHA needed Evan, or a stale label), remove it: `gh api -X DELETE repos/<repo>/issues/<n>/labels/needs-human` (a 404 is fine). Never remove it when the result has a `Needs you:` line.
 
-Every `Needs you:` line also gets the `needs-human` label and **one** Slack ping (COMMON.md format) — exactly one per PR per run, sent here and nowhere else.
+**`Needs you:` is for exactly these cases, and nothing else:** (1) a PR still failing after the fix cap (§4), or a FAIL that can't be fixed automatically (head is `main`/`dev`, install failed, push rejected); (2) a PR from a fork; (3) a merge GitHub itself refuses after the retry (§5). Every other outcome — sensitive files, sync PRs, conflicts, drafts, unverified checks, a human `hold` label — gets **no** `Needs you:` line, no `needs-human` label and no Slack ping; it only shows on the board. A `Needs you:` line also gets the `needs-human` label and **one** Slack ping (COMMON.md format) — exactly one per PR per run, sent here and nowhere else.
 
-Removing `needs-human` from a PASS PR makes the next run retry the merge (unless it touched sensitive files, is a sync PR, or its checks couldn't run).
+Removing `needs-human` from a PASS PR makes the next run retry the merge (unless its checks couldn't run).
 
 ## 7. Finish
 

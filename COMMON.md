@@ -30,6 +30,8 @@ GraphQL is blocked here. Never use `gh pr`, `gh issue`, `gh label`, `gh run` or 
 
 Only to channel `C0C6A1G03JS` (#agent-pipeline), and only the messages your routine file names. Every "Needs you" ping uses exactly: `Needs you: <app short> <what> — <one-line reason> <url>`.
 
+Pings are rare on purpose: the automation merges what passes and resolves what it can. For PR check, the only "Needs you" pings are a PR still failing after the fix cap (or otherwise unfixable), a PR from a fork, and a merge GitHub refuses. Sensitive files, sync PRs, conflicts, drafts and unverified checks never ping — they only show on the board.
+
 ## Working trees
 
 The sandbox is discarded after every run — never wipe, reset or delete working trees or branches; make a fresh worktree instead.

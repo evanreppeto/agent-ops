@@ -16,7 +16,7 @@ All of them follow `COMMON.md` and finish by rebuilding the PR board (`BOARD.md`
 
 ## Settings
 
-- `apps.json` — per app: repo, URLs, test commands (`checks`, `required` — the checks that must really run and pass before an auto-merge or release, `buildCommand`, `buildTriggers`), `sensitive` paths that never auto-merge, and the Linear `feedback` queue.
+- `apps.json` — per app: repo, URLs, test commands (`checks`, `required` — the checks that must really run and pass before an auto-merge or release, `buildCommand`, `buildTriggers`), `sensitive` paths (informational only since 2026-10-05: listed in the PR check comment, they no longer block an auto-merge or a fix), and the Linear `feedback` queue.
   BSR's `*.db.test.ts` suites (they need a local Postgres) are excluded from its cloud test check because BSR's own CI runs them on PRs into main.
 - `pipeline.json` — Slack channel, board issue, stale-PR days, max fix attempts.
 

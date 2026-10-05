@@ -9,24 +9,30 @@ Placeholders: `<app>` = app key (`bsr` or `arc`), `<n>` = PR number, `<SHA>` = t
 ## 1. Find work
 
 ```bash
-cd <AO> && node scripts/collect-prs.mjs > /tmp/prs.json; echo "collect-exit=$?"
+cd <AO> && node scripts/collect-prs.mjs > /tmp/prs.json 2> /tmp/collect.err; echo "collect-exit=$?"
+```
+`collect-exit` not `0` → the PR list is unknown: post to Slack `⚠️ PR check: couldn't list PRs — <first line of /tmp/collect.err>` (read the file; don't paste it into a command; in DRY_RUN print it) and stop.
+
+```bash
 cat > /tmp/candidates.mjs <<'EOF'
 import { readFileSync } from "node:fs";
 import { readPrCheck } from "<AO>/lib/pr-check.mjs";
 const data = JSON.parse(readFileSync("/tmp/prs.json", "utf8"));
-const PAUSE = ["hold", "do-not-merge", "wip", "needs-human"];
-const STALE_MS = 45 * 60 * 1000;
+const HOLD = ["hold", "do-not-merge", "wip"];
+const STALE_MS = 90 * 60 * 1000;
 const order = ["bsr", "arc"];
 const out = [];
 for (const app of data.apps) for (const pr of app.open) {
-  if (pr.base !== "dev" || pr.labels.some((l) => PAUSE.includes(l)) || /^wip\b/i.test(pr.title)) continue;
+  if (pr.base !== "dev" || pr.labels.some((l) => HOLD.includes(l)) || /^\[?wip\b/i.test(pr.title)) continue;
   const c = readPrCheck(pr.comments, pr.headSha);
+  if (pr.labels.includes("needs-human") && c.state !== "none") continue; // this SHA is already handled; a new push gets checked
+  const sync = ["main", "dev"].includes(pr.headRef); // a branch-sync PR is checked but never merged by us
   const reason = c.reason ?? "";
   let job = null;
   if (c.state === "none") job = "check";
   else if (c.state === "running") { if (Date.now() - Date.parse(pr.updatedAt) > STALE_MS) job = "retake"; }
   else if (c.state === "fail") { if (!pr.draft && /^draft\b/.test(reason)) job = "retake"; }
-  else if (c.state === "pass") { if (!pr.draft && /^(draft|on hold)\b/.test(reason)) job = "merge-only"; }
+  else if (c.state === "pass") { if (!sync && !pr.draft && /^(draft|on hold)\b/.test(reason)) job = "merge-only"; }
   if (job) out.push({ app: app.key, n: pr.number, sha: pr.headSha, job });
 }
 const rank = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
@@ -35,12 +41,12 @@ for (const o of out) console.log(`${o.app} ${o.n} ${o.sha} ${o.job}`);
 EOF
 node /tmp/candidates.mjs
 ```
-(Replace `<AO>` inside the heredoc with the real path before running.) Each line is `<app> <number> <sha> <job>`, already sorted: `bsr` before `arc`, oldest PR number first. Handle at most **3** lines per run, from the top. No lines → refresh the board and stop.
+(Replace `<AO>` inside the heredoc with the real path before running.) Each line is `<app> <number> <sha> <job>`, already sorted: `bsr` before `arc`, oldest PR number first. Handle at most **3** lines per run, from the top; a line whose claim you lose (§2) doesn't count toward the 3. No lines → refresh the board and stop.
 
 Jobs:
 - `check` — no check exists for this SHA yet. Do §2 (post a claim), then §3 onward.
-- `retake` — a check comment for this SHA already exists but needs redoing: its run died (claim still `running` after 45 minutes), or it failed while the PR was a draft and the PR is now ready. Do §2 (take over the existing comment — no new comment), then §3 onward.
-- `merge-only` — it already passed and was held back (draft, or `on hold`), and is now ready / no longer held. Skip §2–§4: go to §5, merge-only variant.
+- `retake` — a check comment for this SHA already exists but needs redoing: its run died (claim still `running` after 90 minutes), or it failed while the PR was a draft and the PR is now ready. Do §2 (take over the existing comment — no new comment), then §3 onward.
+- `merge-only` — it already passed and was held back (draft, or `on hold`), and is now ready / no longer held. Skip §2–§4: go to §5, merge-only variant. (It turns into a `retake` if the pass is stale — see §5.)
 
 ## 2. Claim
 
@@ -55,12 +61,13 @@ If the first id printed isn't yours (`cat /tmp/<app>-claim-<n>.id`), another run
 
 **`retake` job** — edit the existing comment instead of posting a new one:
 ```bash
-rm -f /tmp/<app>-claim-<n>.id
+rm -f /tmp/<app>-claim-<n>.id /tmp/<app>-pr-<n>-oldbody.md /tmp/<app>-pr-<n>-updated.txt
 gh api --paginate --slurp repos/<repo>/issues/<n>/comments > /tmp/<app>-pr-<n>-comments-raw.json; echo "gh-exit=$?"
-node -e 'const fs=require("fs");const m="<!-- pr-check sha=<SHA> -->";const c=require("/tmp/<app>-pr-<n>-comments-raw.json").flat().find(c=>c.body.includes(m));if(c){fs.writeFileSync("/tmp/<app>-claim-<n>.id",String(c.id));fs.writeFileSync("/tmp/<app>-pr-<n>-oldbody.md",c.body)}console.log(c?c.id:"none")'
+node -e 'const fs=require("fs");const m="<!-- pr-check sha=<SHA> -->";const c=require("/tmp/<app>-pr-<n>-comments-raw.json").flat().find(c=>c.body.includes(m));if(c){fs.writeFileSync("/tmp/<app>-claim-<n>.id",String(c.id));fs.writeFileSync("/tmp/<app>-pr-<n>-oldbody.md",c.body);fs.writeFileSync("/tmp/<app>-pr-<n>-updated.txt",c.updated_at)}console.log(c?c.id:"none")'
+# --- lookup lines end here (a merge-only job stops above this line) ---
 test -s /tmp/<app>-claim-<n>.id && gh api -X PATCH repos/<repo>/issues/comments/$(cat /tmp/<app>-claim-<n>.id) -F body=@/tmp/<app>-claim-<n>.md > /dev/null; echo "patch-exit=$?"
 ```
-Only if an id was printed (the `.id` file exists) is the PATCH run, and then that comment is your claim. `none` → no comment was touched: treat it as a `check` job and use the `check` block above.
+Only if an id was printed (the `.id` file exists) is the PATCH run (the last line, below the marker comment), and then that comment is your claim. `none` → no comment was touched: treat it as a `check` job and use the `check` block above.
 
 Either way, you'll **edit** the claim comment with the result (`gh api -X PATCH repos/<repo>/issues/comments/$(cat /tmp/<app>-claim-<n>.id) -F body=@<file>`); never post a second result comment for the same SHA.
 
@@ -80,10 +87,22 @@ node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("/tmp/<ap
 **3b. Same-repo only: fetch, diff, install.**
 ```bash
 git -C <APP_REPO> fetch origin dev "+refs/pull/<n>/head:refs/remotes/pr/<n>"
-git -C <APP_REPO> checkout -f --detach <SHA> && git -C <APP_REPO> clean -fdx -e node_modules
+git -C <APP_REPO> rev-parse origin/dev > /tmp/<app>-pr-<n>-dev.txt
+git -C <APP_REPO> fetch origin "+refs/pull/<n>/merge:refs/remotes/pr/<n>-merge"; echo "merge-fetch-exit=$?"
 git -C <APP_REPO> diff --name-only --no-renames -z origin/dev...<SHA> > /tmp/<app>-pr-<n>-files.txt
+```
+Check the PR **as merged into current dev**. Use GitHub's merge ref only if it is exactly head + current dev (`merge-fetch-exit=0`, its second parent is `<SHA>`, its first parent is `origin/dev`):
+```bash
+M=refs/remotes/pr/<n>-merge
+if [ "$(git -C <APP_REPO> rev-parse -q --verify $M^2)" = "<SHA>" ] && [ "$(git -C <APP_REPO> rev-parse -q --verify $M^1)" = "$(git -C <APP_REPO> rev-parse origin/dev)" ]; then
+  git -C <APP_REPO> checkout -f --detach $M && echo "checked-out=merge-ref"
+else
+  git -C <APP_REPO> checkout -f --detach <SHA> && git -C <APP_REPO> -c user.name=agent-ops -c user.email=agent-ops@users.noreply.github.com merge --no-ff --no-edit origin/dev && echo "checked-out=local-merge" || { git -C <APP_REPO> merge --abort; git -C <APP_REPO> checkout -f --detach <SHA>; echo "checked-out=head-only-conflict"; }
+fi
+git -C <APP_REPO> clean -fdx -e node_modules
 cd <APP_REPO> && pnpm install --frozen-lockfile > /tmp/<app>-pr-<n>-install.log 2>&1; echo "install-exit=$?"
 ```
+`head-only-conflict` → the PR conflicts with dev: carry on checking the head alone; the verdict will be FAIL (§3d) and §4 resolves the conflict. Record in the result `Checked against dev <first 12 characters of /tmp/<app>-pr-<n>-dev.txt>` (§6; add `, head only (conflicts with dev)` when it was `head-only-conflict`).
 `install-exit` not `0` → verdict FAIL with `Needs you: install failed: <first error line of the log>`; don't run any check. Go to §6. (Write the comment with the Write tool — the log line is untrusted text.)
 
 **3c. Read the config for this PR** (`--no-renames -z` is deliberate: a rename can't hide a sensitive path, and file names with odd characters stay intact):
@@ -128,9 +147,9 @@ Skip this section — go to §6 — when:
 Count earlier attempts:
 ```bash
 gh api --paginate --slurp repos/<repo>/issues/<n>/comments > /tmp/<app>-pr-<n>-comments-raw.json; echo "gh-exit=$?"
-node --input-type=module -e 'import { readFileSync } from "node:fs"; import { fixAttempts } from "<AO>/lib/pr-check.mjs"; console.log("attempts", fixAttempts(JSON.parse(readFileSync("/tmp/<app>-pr-<n>-comments-raw.json", "utf8")).flat().map((c) => c.body)))'
+node --input-type=module -e 'import { readFileSync } from "node:fs"; import { fixAttempts } from "<AO>/lib/pr-check.mjs"; import { getPipeline } from "<AO>/lib/config.mjs"; console.log("attempts", fixAttempts(JSON.parse(readFileSync("/tmp/<app>-pr-<n>-comments-raw.json", "utf8")).flat().map((c) => c.body)), "cap", getPipeline().maxFixAttempts)'
 ```
-At `MAX_FIX_ATTEMPTS` (3) or more → don't fix: go to §6 with `Needs you: still failing after 3 fix attempts`.
+At `cap` or more (the cap is `maxFixAttempts` in `<AO>/pipeline.json`, the same value as `MAX_FIX_ATTEMPTS` — change it only there) → don't fix: go to §6 with `Needs you: still failing after <cap> fix attempts`.
 
 Otherwise, on a local branch at `<SHA>` (`git -C <APP_REPO> checkout -B fix-<n> <SHA>`):
 - **Conflict with dev:** `git merge --no-ff --no-edit origin/dev`. Resolve only mechanical conflicts (both sides added different lines → keep both; `pnpm-lock.yaml` → take dev's, then `pnpm install`). Any real disagreement → `git merge --abort`, go to §6 with `Needs you: real merge conflict in <files>`.
@@ -139,9 +158,17 @@ Otherwise, on a local branch at `<SHA>` (`git -C <APP_REPO> checkout -B fix-<n> 
 
 Commit (`fix: make PR #<n> pass checks (<what>)`) and get the new SHA (`git rev-parse HEAD` → `<NEW>`). Then push — first checking the branch name (it is untrusted text):
 ```bash
-git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)" && git -C <APP_REPO> push origin "HEAD:refs/heads/$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "push-exit=$?"
+git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)" && git -C <APP_REPO> push origin "HEAD:refs/heads/$(cat /tmp/<app>-pr-<n>-ref.txt)" 2> /tmp/<app>-pr-<n>-push.err; echo "push-exit=$?"
 ```
-`push-exit` not `0` → find out which half failed: `git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "ref-exit=$?"`. `ref-exit` not `0` → nothing was pushed; go to §6 with `Needs you: can't push — odd branch name`. `ref-exit=0` → the push was rejected, someone pushed meanwhile: stop on this PR, edit your claim to say so. No fix comment was posted yet, so the rejected push costs no attempt.
+`push-exit` not `0` → find out which half failed: `git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "ref-exit=$?"`. `ref-exit` not `0` → nothing was pushed; go to §6 with `Needs you: can't push — odd branch name`. `ref-exit=0` → the push was rejected. Find out whether anyone else pushed:
+```bash
+gh api repos/<repo>/pulls/<n> > /tmp/<app>-pr-<n>-after.json; echo "gh-exit=$?"
+node -e 'try{const p=JSON.parse(require("fs").readFileSync("/tmp/<app>-pr-<n>-after.json","utf8"));console.log(p.head.sha==="<SHA>"?"head-same":"head-moved")}catch(e){console.log("head-same")}'
+```
+- `head-moved` → someone pushed meanwhile: stop on this PR, edit your claim to say so (the next run checks the new commit).
+- `head-same` (including an unreadable answer) → nobody else pushed, so the rejection is permanent (permissions, branch protection, a hook): don't loop. Go to §6 with FAIL and `Needs you: can't push the fix — <first line of /tmp/<app>-pr-<n>-push.err>` (write the comment with the Write tool — that line is untrusted text). The usual label and one Slack ping follow.
+
+No fix comment was posted yet, so a rejected push costs no attempt.
 
 **Push succeeded — do these, in this order, before anything else:**
 1. Post the claim comment for `<NEW>` (§2 `check` format, id into `/tmp/<app>-claim-<n>-new.id`), with the oldest-claim check. A run fired by your own push may claim `<NEW>` in the same seconds; the oldest claim wins. If you lose, delete yours and stop on this PR after step 3.
@@ -157,21 +184,27 @@ First make sure `SENSITIVE` is known: from §3c, or — for a `merge-only` job, 
 git -C <APP_REPO> fetch origin dev "+refs/pull/<n>/head:refs/remotes/pr/<n>"
 git -C <APP_REPO> diff --name-only --no-renames -z origin/dev...<SHA> > /tmp/<app>-pr-<n>-files.txt
 ```
-then the §3c node block (no install, no checkout needed). A `merge-only` job also posts **no new claim**: it edits the existing PASS comment (find it with the `retake` snippet in §2, which writes its id and body to `/tmp/<app>-claim-<n>.id` and `/tmp/<app>-pr-<n>-oldbody.md`) and replaces its `Not auto-merged: …` line with the outcome below.
+then the §3c node block (no install, no checkout needed). A `merge-only` job also posts **no new claim**: it edits the existing PASS comment. Find it with the lookup lines of the `retake` snippet in §2 only (everything above the `# --- lookup lines end here` marker — don't PATCH); they write its id, body and `updated_at` to `/tmp/<app>-claim-<n>.id`, `/tmp/<app>-pr-<n>-oldbody.md` and `/tmp/<app>-pr-<n>-updated.txt`. Then record current dev and check the pass is still fresh:
+```bash
+git -C <APP_REPO> rev-parse origin/dev > /tmp/<app>-pr-<n>-dev.txt
+node -e 'const fs=require("fs");const b=fs.readFileSync("/tmp/<app>-pr-<n>-oldbody.md","utf8");const m=b.match(/^Checked against dev ([0-9a-f]{12})$/m);const dev=fs.readFileSync("/tmp/<app>-pr-<n>-dev.txt","utf8").trim().slice(0,12);const age=Date.now()-Date.parse(fs.readFileSync("/tmp/<app>-pr-<n>-updated.txt","utf8").trim());console.log(m&&m[1]===dev&&age<864e5?"fresh":"RETAKE")'
+```
+(No comment found → treat it as a `check` job instead.) `RETAKE` — dev has moved since the check, the comment has no `Checked against dev` line, or the PASS is over 24 hours old → don't merge: this becomes a `retake` (§2 `retake`, PATCH included, then §3 onward). `fresh` → carry on: the job edits the existing PASS comment and replaces its `Not auto-merged: …` line with the outcome below.
 
 **Fresh state.** Right before merging, re-read the PR — a label, a draft flip or a new push may have happened since you started (if `mergeable=` is `unknown`, redo it up to 3 times, 10 seconds apart):
 ```bash
 gh api repos/<repo>/pulls/<n> > /tmp/<app>-pr-<n>-fresh.json; echo "gh-exit=$?"
-node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/<app>-pr-<n>-fresh.json","utf8"));const L=p.labels.map(l=>l.name);const hold=L.some(l=>["hold","do-not-merge","wip","needs-human"].includes(l));console.log("state="+p.state,"base="+p.base.ref,"draft="+p.draft,"head="+(p.head.sha==="<SHA>"?"same":"CHANGED"),"hold="+hold,"mergeable="+p.mergeable_state)'
+node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/<app>-pr-<n>-fresh.json","utf8"));const L=p.labels.map(l=>l.name);const hold=L.some(l=>["hold","do-not-merge","wip","needs-human"].includes(l));console.log("state="+p.state,"base="+p.base.ref,"draft="+p.draft,"head="+(p.head.sha==="<SHA>"?"same":"CHANGED"),"hold="+hold,"sync="+(["main","dev"].includes(p.head.ref)?p.head.ref:"none"),"mergeable="+p.mergeable_state)'
 ```
-Merge only if it prints `state=open base=dev draft=false head=same hold=false` and `mergeable` isn't `dirty`.
+Merge only if it prints `state=open base=dev draft=false head=same hold=false sync=none` and `mergeable` isn't `dirty`.
 
 Not merged, with a `Not auto-merged:` line, checked in this order:
 - `SENSITIVE` isn't empty → add label `needs-human` and `Needs you: touches <files>`;
+- `sync` isn't `none` (the head branch is `main` or `dev`) → never merge it: `Not auto-merged: sync PR — merge it with a merge commit` + `Needs you: <app short> PR #<n> is a <sync value>→<base> sync, merge with a merge commit`;
 - `state` isn't `open` or `base` isn't `dev` → `Not auto-merged: PR closed or retargeted`;
 - `head=CHANGED` → `Not auto-merged: a newer commit was pushed — the next run checks it`;
 - `draft=true` → `Not auto-merged: draft — mark it ready to merge` (it merges when marked ready);
-- `hold=true` → `Not auto-merged: on hold`;
+- `hold=true` → `Not auto-merged: on hold` (if `needs-human` was the only hold label, §6 removes it, and that removal makes the next run merge this PR);
 - `mergeable=dirty` → `Not auto-merged: conflicts with dev` + `Needs you: PR now conflicts with dev`;
 - **checks not verified:** the `pnpm typecheck` and `pnpm test` checks must both have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| pnpm typecheck | <result> |` and `| pnpm test | <result> |` must both be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here` + `Needs you: checks could not run — <which>`.
 
@@ -194,11 +227,14 @@ Edit your claim comment (`/tmp/<app>-claim-<n>.id`) to:
 | <command> | pass / FAIL / fails on dev too (same failures) / fails on dev too / could not run (env) / could not run (timeout) |
 **Review:** 0–5 bullets with file:line, or "nothing found".
 **Sensitive files:** list, or none.
+Checked against dev <first 12 of /tmp/<app>-pr-<n>-dev.txt>      ← §3b; for a head-only conflict check add ", head only (conflicts with dev)"
 Not auto-merged: <reason>      ← only when not merged
 Needs you: <reason>            ← only when Evan must act
 Auto-merged into dev.          ← only when merged
 ```
-Write it with the Write tool to `/tmp/<app>-result-<n>.md` and PATCH with `-F body=@`. Keep the table rows exactly `| <command> | <result> |` — the `merge-only` job reads them.
+Write it with the Write tool to `/tmp/<app>-result-<n>.md` and PATCH with `-F body=@`. Keep the table rows exactly `| <command> | <result> |` and the line `Checked against dev <12 hex>` — the `merge-only` job reads them.
+
+**New SHA passes cleanly:** if the verdict is PASS, the result has no `Needs you:` line, and the PR carries `needs-human` (an earlier SHA needed Evan, or a stale label), remove it: `gh api -X DELETE repos/<repo>/issues/<n>/labels/needs-human` (a 404 is fine). Never remove it when the result has a `Needs you:` line.
 
 Every `Needs you:` line also gets the `needs-human` label and **one** Slack ping (COMMON.md format) — exactly one per PR per run, sent here and nowhere else.
 
@@ -206,4 +242,4 @@ Clean up between PRs: `git -C <APP_REPO> reset --hard -q && git -C <APP_REPO> ch
 
 ## 7. Finish
 
-Refresh the board (`BOARD.md`, key `pr-check`). Remove any base worktrees (`git -C <APP_REPO> worktree remove --force /tmp/base-<app>`). Print: PRs checked with verdicts, fixed, merged, handed to Evan.
+Run §1 **once more** (collect, then the candidates script; if `collect-exit` isn't `0` here, skip this and go on to the board). Handle any remaining unclaimed `check`, `retake` or `merge-only` lines the same way — **up to 3 more**, then stop; don't run §1 a third time. Then refresh the board (`BOARD.md`, key `pr-check`). Remove any base worktrees (`git -C <APP_REPO> worktree remove --force /tmp/base-<app>`). Print: PRs checked with verdicts, fixed, merged, handed to Evan.

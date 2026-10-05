@@ -84,7 +84,9 @@
       "**/*billing*", "**/*billing*/**", "**/*stripe*", "**/*stripe*/**", "**/*payment*", "**/*payment*/**",
       "supabase/migrations/**", "src/lib/vault/**", "src/app/api/cron/**",
       "src/app/v3/_actions/launch.ts", "src/lib/campaigns/launch*", "src/lib/campaigns/external-send*",
-      "src/lib/automations/delivery.ts", "**/*dispatch*", "**/*dispatch*/**", ".github/workflows/**"
+      "src/lib/automations/delivery.ts", "**/*dispatch*", "**/*dispatch*/**", ".github/workflows/**",
+      "src/lib/approvals/**", "src/lib/campaigns/decisions.ts", "src/lib/campaigns/planned-send*",
+      "src/lib/connectors/**", "src/lib/connections/**", "src/lib/integrations/**", "src/lib/supabase/**", "vercel.json"
     ],
     "devUrl": "https://dev.arc-studio.ai",
     "prodUrl": "https://arc-studio.ai",

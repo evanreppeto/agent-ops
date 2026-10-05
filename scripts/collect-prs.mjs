@@ -15,6 +15,7 @@ const apps = listApps().map((app) => {
     url: p.html_url,
     draft: p.draft,
     base: p.base.ref,
+    headRef: p.head.ref,
     headSha: p.head.sha,
     createdAt: p.created_at,
     updatedAt: p.updated_at,

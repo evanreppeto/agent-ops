@@ -282,9 +282,9 @@ For each id in `tickets` in `/tmp/rel-<app>-ship.json`, read the Linear issue. S
 ## 9. Slack
 
 Post to `C0C6A1G03JS` (#agent-pipeline). One message per app (none for "nothing to ship"). In DRY_RUN print it instead.
-- shipped and healthy (merged, tree matched (§6.6), and all of §7 OK): `🚀 <short> shipped: <P> PRs, <T> tickets, <M> migrations — <PR url>. Prod check OK.` Add ` not marked Done: <id> (<label>), …` if §8 left any.
-- merged with a prod problem (including `merged tree differs from tested dev`): `Needs you: <short> release — <result> <PR url>` + the rollback line (or the migrations line) from §7. Tickets were not marked Done.
-- held: `Needs you: <short> release held — <reason> <PR url or "no PR opened">`.
+- shipped and healthy (merged, tree matched (§6.6), and all of §7 OK): `🚀 <app short> shipped: <P> PRs, <T> tickets, <M> migrations — <PR url>. Prod check OK.` Add ` not marked Done: <id> (<label>), …` if §8 left any.
+- merged with a prod problem (including `merged tree differs from tested dev`): `Needs you: <app short> release — <result> <PR url>` + the rollback line (or the migrations line) from §7. Tickets were not marked Done.
+- held: `Needs you: <app short> release held — <reason> <PR url or "no PR opened">`.
 
 ## 10. Finish
 

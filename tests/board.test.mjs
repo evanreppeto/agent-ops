@@ -45,8 +45,10 @@ test("classify: needs-human label → needs_you with the comment's reason", () =
 });
 
 test("classify: hold label and WIP title → needs_you", () => {
-  assert.equal(classify(pr({ labels: ["hold"] }), OPTS).reason, "on hold — remove the label to resume");
+  assert.equal(classify(pr({ labels: ["hold"] }), OPTS).reason, "on hold — remove the label; it resumes on the next push or at 7:30am");
   assert.equal(classify(pr({ title: "WIP: thing" }), OPTS).section, "needs_you");
+  assert.equal(classify(pr({ title: "[WIP] x" }), OPTS).section, "needs_you");
+  assert.equal(classify(pr({ title: "Wiper blades" }), OPTS).section, "checking");
 });
 
 test("classify: base main → needs_you", () => {

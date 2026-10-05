@@ -2,6 +2,17 @@
   "bsr": {
     "name": "BSR Manager App",
     "repo": "evanreppeto/clone-BS-migration",
+    "short": "BSR",
+    "checks": ["pnpm typecheck", "pnpm test", "pnpm lint"],
+    "buildCommand": "pnpm build",
+    "buildTriggers": ["package.json", "pnpm-lock.yaml", "next.config.*", "middleware.ts", "**/route.ts"],
+    "sensitive": [
+      "middleware.ts", "lib/supabase/middleware.ts", "app/auth/**", "lib/supabase/admin.ts",
+      "**/*quickbooks*", "**/*quickbooks*/**", "**/*invoice*", "**/*invoice*/**",
+      "supabase/migrations/**", "app/portal/**", "components/portal/**",
+      "app/api/cron/payroll-approval/**", "lib/payroll-period*", ".github/workflows/**"
+    ],
+    "feedback": { "team": "BSR", "labelId": "de5bbac3-396c-4a26-bb4e-91d9ba0d60a7" },
     "devUrl": "https://dev.bigshouldersmanager.com",
     "prodUrl": "https://www.bigshouldersmanager.com",
     "viewports": [
@@ -57,6 +68,24 @@
   "arc": {
     "name": "Arc Studio",
     "repo": "evanreppeto/arc-studio",
+    "short": "Arc",
+    "checks": [
+      "pnpm typecheck",
+      "pnpm lint",
+      "pnpm --filter ./apps/arc-runner typecheck",
+      "pnpm --filter ./apps/arc-runner test",
+      "pnpm --filter ./packages/arc-connector test",
+      "pnpm test"
+    ],
+    "buildCommand": "ARC_CI_SKIP_BUILD_TYPECHECK=1 pnpm build",
+    "buildTriggers": ["package.json", "**/package.json", "pnpm-lock.yaml", "next.config.*", "src/proxy.ts", "middleware.ts", "**/route.ts"],
+    "sensitive": [
+      "src/proxy.ts", "src/lib/auth/**", "src/app/api/auth/**", "src/app/login/**",
+      "**/*billing*", "**/*billing*/**", "**/*stripe*", "**/*stripe*/**", "**/*payment*", "**/*payment*/**",
+      "supabase/migrations/**", "src/lib/vault/**", "src/app/api/cron/**",
+      "src/app/v3/_actions/launch.ts", "src/lib/campaigns/launch*", "src/lib/campaigns/external-send*",
+      "src/lib/automations/delivery.ts", "**/*dispatch*", "**/*dispatch*/**", ".github/workflows/**"
+    ],
     "devUrl": "https://dev.arc-studio.ai",
     "prodUrl": "https://arc-studio.ai",
     "viewports": [

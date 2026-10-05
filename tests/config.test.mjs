@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { listApps, getApp, appForRepo } from "../lib/config.mjs";
+import { listApps, getApp, appForRepo, getPipeline } from "../lib/config.mjs";
 
 test("listApps returns both apps with their key", () => {
   const keys = listApps().map((a) => a.key).sort();
@@ -36,4 +36,29 @@ test("bsr console baseline matches the realtime websocket error on dev and on pr
   const dev = "WebSocket connection to 'wss://jbarlcajqpbzbhvbxaci.supabase.co/realtime/v1/websocket?apikey=x' failed";
   const prod = "WebSocket connection to 'wss://tesgvrcgcyadownahujh.supabase.co/realtime/v1/websocket?apikey=x' failed";
   assert.deepEqual(withoutBaseline([dev, prod, "TypeError: boom"], base), ["TypeError: boom"]);
+});
+
+test("every app has the PR-check settings", () => {
+  for (const app of listApps()) {
+    assert.match(app.short, /^[A-Za-z]+$/, `${app.key} short`);
+    assert.ok(app.checks.length >= 3 && app.checks.every((c) => c.startsWith("pnpm ")), `${app.key} checks`);
+    assert.match(app.buildCommand, /pnpm build$/, `${app.key} buildCommand`);
+    assert.ok(app.buildTriggers.includes("**/route.ts"), `${app.key} buildTriggers`);
+    assert.ok(app.sensitive.includes("supabase/migrations/**"), `${app.key} sensitive has migrations`);
+    assert.ok(app.sensitive.includes(".github/workflows/**"), `${app.key} sensitive has workflows`);
+  }
+});
+
+test("bsr has a feedback queue, arc does not yet", () => {
+  assert.deepEqual(getApp("bsr").feedback, { team: "BSR", labelId: "de5bbac3-396c-4a26-bb4e-91d9ba0d60a7" });
+  assert.equal(getApp("arc").feedback, undefined);
+});
+
+test("pipeline settings", () => {
+  const p = getPipeline();
+  assert.equal(p.slackChannel, "C0C6A1G03JS");
+  assert.deepEqual(p.boardIssue, { repo: "evanreppeto/agent-ops", number: 1 });
+  assert.equal(p.staleDays, 2);
+  assert.equal(p.maxFixAttempts, 3);
+  assert.equal(p.timezone, "America/New_York");
 });

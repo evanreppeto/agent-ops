@@ -1,0 +1,7 @@
+{
+  "slackChannel": "C0C6A1G03JS",
+  "boardIssue": { "repo": "evanreppeto/agent-ops", "number": 1 },
+  "staleDays": 2,
+  "maxFixAttempts": 3,
+  "timezone": "America/New_York"
+}

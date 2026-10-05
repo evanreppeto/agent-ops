@@ -1,6 +1,6 @@
 # PR check + fix
 
-You check open PRs in both apps, fix the ones that fail, and auto-merge every one that passes into `dev`: no sensitive-file holds, no "Needs you" for anything you can resolve yourself. A human only hears about a PR that still fails after the fix cap, a fork PR, or a merge GitHub itself refuses (§6). Read `COMMON.md` first and follow it. Routine key: `pr-check`.
+You check open PRs in both apps, fix the ones that fail, and auto-merge every one that passes into `dev`: no sensitive-file holds, no `Stuck` for anything you can resolve yourself. You also post one-line Slack updates (the merges, the fix pushes and the `Stuck` cases — see the Slack section of `COMMON.md`, which is the only list of formats); a PR is `Stuck` only when it still fails after the fix cap, is from a fork, or GitHub itself refuses the merge (§6). Read `COMMON.md` first and follow it. Routine key: `pr-check`.
 
 You run when a PR is opened, pushed, reopened or marked ready — but don't rely on which PR fired you: always scan every open PR. Drafts never fire you (only the 7:30am backstop sees them). Several runs can overlap, so claim before you work (§2) and re-check before you merge (§5).
 
@@ -13,7 +13,7 @@ Placeholders: `<app>` = app key (`bsr` or `arc`), `<n>` = PR number, `<SHA>` = t
 ```bash
 cd <AO> && node scripts/collect-prs.mjs > /tmp/prs.json 2> /tmp/collect.err; echo "collect-exit=$?"
 ```
-`collect-exit` not `0` → the PR list is unknown: post to Slack `⚠️ PR check: couldn't list PRs — <first line of /tmp/collect.err>` (read the file; don't paste it into a command; in DRY_RUN print it) and stop.
+`collect-exit` not `0` → the PR list is unknown: post the Slack line `Stuck: PR check — couldn't list PRs — <first line of /tmp/collect.err>` (read the file; don't paste it into a command; in DRY_RUN print it) and stop.
 
 ```bash
 cat > /tmp/candidates.mjs <<'EOF'
@@ -82,7 +82,7 @@ gh api repos/<repo>/pulls/<n> > /tmp/<app>-pr-<n>.json; echo "gh-exit=$?"
 node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("/tmp/<app>-pr-<n>.json","utf8"));fs.writeFileSync("/tmp/<app>-pr-<n>-ref.txt",p.head.ref);const same=!!p.head.repo&&p.head.repo.full_name===p.base.repo.full_name;console.log(same?"same-repo":"fork","mergeable="+p.mergeable_state,"draft="+p.draft,"head="+p.head.sha)}catch(e){console.log("unreadable")}'
 ```
 - `unreadable` (the read failed, came back empty, or the node line crashed) → wait 10 seconds (`sleep 10`) and redo 3a **once**. Still `unreadable` → treat it as `fork`.
-- `fork` (including a deleted fork, `head.repo` null) → **fork**: don't fetch, check out or install anything. Verdict FAIL with `Needs you: PR from a fork — check it by hand`. Go to §6.
+- `fork` (including a deleted fork, `head.repo` null) → **fork**: don't fetch, check out or install anything. Verdict FAIL with `Stuck: PR from a fork — check it by hand`. Go to §6.
 - `head=` isn't `<SHA>` → a newer commit landed. Edit your claim to `Superseded by a newer commit — the next run checks it.`, and skip this PR.
 - `mergeable=unknown` → wait 10 seconds (`sleep 10`) and redo 3a, up to 3 times, before deciding. Still unknown → carry on and treat it as not `dirty`.
 - Remember `draft=` for later (§4 and §5).
@@ -108,7 +108,7 @@ cd <WT> && pnpm install --frozen-lockfile > /tmp/<app>-pr-<n>-install.log 2>&1; 
 ```
 (`merge-tree --write-tree` only tests for conflicts and writes no working files, so a conflicting PR is detected without ever starting — or having to abort — a merge.) Run the `pnpm install` Bash call with the Bash tool `timeout` at 600000 — expect a few minutes on Arc. From here on, every Bash call that touches the PR's code starts with `cd <WT>` (the working directory resets between calls).
 `head-only-conflict` → the PR conflicts with dev: carry on checking the head alone; the verdict will be FAIL (§3d) and §4 resolves the conflict. Record in the result `Checked against dev <first 12 characters of /tmp/<app>-pr-<n>-dev.txt>` (§6; add `, head only (conflicts with dev)` when it was `head-only-conflict`).
-`install-exit` not `0` → verdict FAIL with `Needs you: install failed: <first error line of the log>`; don't run any check. Go to §6. (Write the comment with the Write tool — the log line is untrusted text.)
+`install-exit` not `0` → verdict FAIL with `Stuck: install failed: <first error line of the log>`; don't run any check. Go to §6. (Write the comment with the Write tool — the log line is untrusted text.)
 
 **3c. Read the config for this PR.** `SENSITIVE` is informational only: it goes into the result comment (§6) and never blocks a merge, a fix, or adds a label or a ping. (`--no-renames -z` is deliberate: a rename can't hide a sensitive path, and file names with odd characters stay intact):
 ```bash
@@ -145,19 +145,19 @@ Verdict: **FAIL** if a check fails that doesn't also fail on dev, or the review 
 
 Skip this section — go to §6 — when:
 - the PR is a draft: drafts are report-only. Result line: `Not auto-merged: draft — mark it ready and I'll try to fix it`;
-- the FAIL already carries a `Needs you:` line from §3 (fork, install failed);
+- the FAIL already carries a `Stuck:` line from §3 (fork, install failed);
 - the PR's head branch is `main` or `dev` — never push a fix there:
   ```bash
   node -e 'const r=require("fs").readFileSync("/tmp/<app>-pr-<n>-ref.txt","utf8").trim();console.log(["main","dev"].includes(r)?"PROTECTED "+r:"ok")'
   ```
-  `PROTECTED` → go to §6 with `Needs you: PR head is <ref>, fix it by hand` (a failing PR that can't be fixed automatically).
+  `PROTECTED` → go to §6 with `Stuck: PR head is <ref>, fix it by hand` (a failing PR that can't be fixed automatically).
 
 Count earlier attempts:
 ```bash
 gh api --paginate --slurp repos/<repo>/issues/<n>/comments > /tmp/<app>-pr-<n>-comments-raw.json; echo "gh-exit=$?"
 node --input-type=module -e 'import { readFileSync } from "node:fs"; import { fixAttempts } from "<AO>/lib/pr-check.mjs"; import { getPipeline } from "<AO>/lib/config.mjs"; console.log("attempts", fixAttempts(JSON.parse(readFileSync("/tmp/<app>-pr-<n>-comments-raw.json", "utf8")).flat().map((c) => c.body)), "cap", getPipeline().maxFixAttempts)'
 ```
-At `cap` or more (the cap is `maxFixAttempts` in `<AO>/pipeline.json`, the same value as `MAX_FIX_ATTEMPTS` — change it only there) → don't fix: go to §6 with `Needs you: still failing after <cap> fix attempts`.
+At `cap` or more (the cap is `maxFixAttempts` in `<AO>/pipeline.json`, the same value as `MAX_FIX_ATTEMPTS` — change it only there) → don't fix: go to §6 with `Stuck: still failing after <cap> fix attempts`.
 
 Otherwise, work inside `<WT>` on a new local branch cut from the PR head: `git -C <WT> switch -c fix-<app>-<n>-<attempt> <SHA>` (`<attempt>` = the `attempts` number printed above plus 1; never reuse a branch name — if `git -C <APP_REPO> rev-parse -q --verify refs/heads/<name>` prints something, add `-b`, `-c` … to the name), then `cd <WT> && pnpm install --frozen-lockfile` again. Every command below runs with `cd <WT>` (or `git -C <WT>`).
 - **Conflict with dev:** `git merge --no-ff --no-edit origin/dev`, then resolve **every** conflict yourself: read both sides of each hunk and keep the intent of both (dev's newer behavior plus the PR's change); never just take one side wholesale unless the other side is truly obsolete. Regenerate lockfiles and generated files with the repo's own commands (`pnpm-lock.yaml` → take dev's, then `pnpm install`; likewise any generated types or snapshots), don't hand-edit them. Commit the merge, `pnpm install --frozen-lockfile`, and run the checks again before pushing. Never push a result that doesn't pass the checks: if after a real attempt it still doesn't pass, that counts as a failed fix attempt (the normal cap applies) — leave the worktree as it is (don't abort, reset or clean — the sandbox is discarded) and go to §6 as a FAIL.
@@ -168,20 +168,21 @@ Commit (`fix: make PR #<n> pass checks (<what>)`) and get the new SHA (`git -C <
 ```bash
 git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)" && git -C <WT> push origin "HEAD:refs/heads/$(cat /tmp/<app>-pr-<n>-ref.txt)" 2> /tmp/<app>-pr-<n>-push.err; echo "push-exit=$?"
 ```
-`push-exit` not `0` → find out which half failed: `git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "ref-exit=$?"`. `ref-exit` not `0` → nothing was pushed; go to §6 with `Needs you: can't push — odd branch name`. `ref-exit=0` → the push was rejected. Find out whether anyone else pushed:
+`push-exit` not `0` → find out which half failed: `git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "ref-exit=$?"`. `ref-exit` not `0` → nothing was pushed; go to §6 with `Stuck: can't push — odd branch name`. `ref-exit=0` → the push was rejected. Find out whether anyone else pushed:
 ```bash
 gh api repos/<repo>/pulls/<n> > /tmp/<app>-pr-<n>-after.json; echo "gh-exit=$?"
 node -e 'try{const p=JSON.parse(require("fs").readFileSync("/tmp/<app>-pr-<n>-after.json","utf8"));console.log(p.head.sha==="<SHA>"?"head-same":"head-moved")}catch(e){console.log("head-same")}'
 ```
 - `head-moved` → someone pushed meanwhile: stop on this PR, edit your claim to say so (the next run checks the new commit).
-- `head-same` (including an unreadable answer) → nobody else pushed, so the rejection is permanent (permissions, branch protection, a hook): don't loop. Go to §6 with FAIL and `Needs you: can't push the fix — <first line of /tmp/<app>-pr-<n>-push.err>` (write the comment with the Write tool — that line is untrusted text). The usual label and one Slack ping follow.
+- `head-same` (including an unreadable answer) → nobody else pushed, so the rejection is permanent (permissions, branch protection, a hook): don't loop. Go to §6 with FAIL and `Stuck: can't push the fix — <first line of /tmp/<app>-pr-<n>-push.err>` (write the comment with the Write tool — that line is untrusted text). The usual label and one Slack `Stuck:` line follow.
 
 No fix comment was posted yet, so a rejected push costs no attempt.
 
 **Push succeeded — do these, in this order, before anything else:**
-1. Post the claim comment for `<NEW>` (§2 `check` format, id into `/tmp/<app>-claim-<n>-new.id`), with the oldest-claim check. A run fired by your own push may claim `<NEW>` in the same seconds; the oldest claim wins. If you lose, delete yours and stop on this PR after step 3.
+1. Post the claim comment for `<NEW>` (§2 `check` format, id into `/tmp/<app>-claim-<n>-new.id`), with the oldest-claim check. A run fired by your own push may claim `<NEW>` in the same seconds; the oldest claim wins. If you lose, delete yours and stop on this PR after step 4.
 2. Post the fix comment: `<!-- pr-fix sha=<NEW> -->` + newline + what failed, what you changed with file:line. (This is what counts as the attempt.)
 3. Edit the old SHA's claim comment to its FAIL result (§6 format) plus `Fixed in <NEW>.`
+4. Post the Slack `Fixing:` line (COMMON.md): `Fixing: <app short> #<n> <title> — merged latest dev and resolved conflicts (try <k>/3) <url>` when this attempt was a conflict resolution, otherwise `Fixing: <app short> #<n> <title> — <one-line what failed> (try <k>/3) <url>`. `<k>` = the attempt number (`attempts` + 1) and `/3` is the cap (`maxFixAttempts`). A push that was rejected posts nothing. Do this even when you lost the claim race in step 1.
 
 Then go back to §3 with `<SHA>` = `<NEW>` and your new claim (`/tmp/<app>-claim-<n>.id` ← the new id); §3b makes a fresh `<WT>` for `<NEW>`. Each pass through §4 is one attempt.
 
@@ -209,16 +210,16 @@ Merge only if it prints `state=open base=dev draft=false head=same hold=false` a
 Not merged, with a `Not auto-merged:` line, checked in this order:
 - `state` isn't `open` or `base` isn't `dev` → `Not auto-merged: PR closed or retargeted`;
 - `head=CHANGED` → `Not auto-merged: a newer commit was pushed — the next run checks it`;
-- `draft=true` → `Not auto-merged: draft — mark it ready and it merges` (no `Needs you`, no ping: board only; GitHub can't merge a draft through REST, and it merges once marked ready);
-- `hold=true` → `Not auto-merged: on hold` (a `hold`, `do-not-merge` or `wip` label or a WIP title is Evan choosing to hold: no `Needs you`, no ping. If `needs-human` was the only hold label, §6 removes it, and that removal makes the next run merge this PR);
+- `draft=true` → `Not auto-merged: draft — mark it ready and it merges` (no `Stuck:` line, no Slack post: board only; GitHub can't merge a draft through REST, and it merges once marked ready);
+- `hold=true` → `Not auto-merged: on hold` (a `hold`, `do-not-merge` or `wip` label or a WIP title is Evan choosing to hold: no `Stuck:` line, no Slack post. If `needs-human` was the only hold label, §6 removes it, and that removal makes the next run merge this PR);
 - `mergeable=dirty` → dev moved under the PR: not a hand-off. Treat it as `RETAKE` (§2 `retake`, then §3 onward); §3 sees the conflict and §4 resolves it;
-- **checks not verified:** every check in the `REQUIRED` list (the app's `required` in `apps.json`) must have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| <cmd> | <result> |` (`<cmd>` = the exact command string) for every `REQUIRED` check must all be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here — <which>` (no `Needs you`, no ping: board only; a new push is checked again).
+- **checks not verified:** every check in the `REQUIRED` list (the app's `required` in `apps.json`) must have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| <cmd> | <result> |` (`<cmd>` = the exact command string) for every `REQUIRED` check must all be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here — <which>` (no `Stuck:` line, no Slack post: board only; a new push is checked again).
 
 Otherwise merge (the only auto-merge path), with `<method>` = the `method=` value printed above (`merge` for sync PRs — never squash those, a squash would put new commits on one branch that the other never gets — otherwise `squash`):
 ```bash
 gh api -X PUT repos/<repo>/pulls/<n>/merge -f merge_method=<method> -f sha=<SHA> > /tmp/<app>-merge-<n>.json 2> /tmp/<app>-merge-<n>.err; echo "gh-exit=$?"
 ```
-`gh-exit=0` → `Auto-merged into dev.` Otherwise wait 30 seconds, redo the fresh-state read above, and — if it still passes — retry the PUT **once**. Still refused → `Not auto-merged: <message>` + `Needs you: merge refused — <message>`, where `<message>` is `.message` from `/tmp/<app>-merge-<n>.json` (or the first line of the `.err` file). Write the comment with the Write tool — the message is untrusted text.
+`gh-exit=0` → `Auto-merged into dev.`, then post the Slack `Merged:` line (COMMON.md): `Merged: <app short> #<n> <title> → dev <url>`, with ` (sync, merge commit)` appended when `method=merge`. (`<title>` = `.title` in `/tmp/<app>-pr-<n>-fresh.json`, read by you and passed to the Slack tool, never through a shell.) Otherwise wait 30 seconds, redo the fresh-state read above, and — if it still passes — retry the PUT **once**. Still refused → `Not auto-merged: <message>` + `Stuck: merge refused — <message>`, where `<message>` is `.message` from `/tmp/<app>-merge-<n>.json` (or the first line of the `.err` file). Write the comment with the Write tool — the message is untrusted text.
 
 Label: `gh api -X POST repos/<repo>/issues/<n>/labels -f 'labels[]=needs-human'` (create it first with `gh api -X POST repos/<repo>/labels -f name=needs-human -f color=D93F0B` if it doesn't exist).
 
@@ -235,17 +236,17 @@ Edit your claim comment (`/tmp/<app>-claim-<n>.id`) to:
 **Sensitive files:** list, or none (informational: never blocks the merge).
 Checked against dev <first 12 of /tmp/<app>-pr-<n>-dev.txt>      ← §3b; for a head-only conflict check add ", head only (conflicts with dev)"
 Not auto-merged: <reason>      ← only when not merged
-Needs you: <reason>            ← only for the three cases below
+Stuck: <reason>                ← only for the three cases below
 Auto-merged into dev.          ← only when merged
 ```
 Write it with the Write tool to `/tmp/<app>-result-<n>.md` and PATCH with `-F body=@`. Keep the table rows exactly `| <command> | <result> |` and the line `Checked against dev <12 hex>` — the `merge-only` job reads them.
 
-**New SHA passes cleanly:** if the verdict is PASS, the result has no `Needs you:` line, and the PR carries `needs-human` (an earlier SHA needed Evan, or a stale label), remove it: `gh api -X DELETE repos/<repo>/issues/<n>/labels/needs-human` (a 404 is fine). Never remove it when the result has a `Needs you:` line.
+**New SHA passes cleanly:** if the verdict is PASS, the result has no `Stuck:` line, and the PR carries `needs-human` (an earlier SHA was stuck, or a stale label), remove it: `gh api -X DELETE repos/<repo>/issues/<n>/labels/needs-human` (a 404 is fine). Never remove it when the result has a `Stuck:` line.
 
-**`Needs you:` is for exactly these cases, and nothing else:** (1) a PR still failing after the fix cap (§4), or a FAIL that can't be fixed automatically (head is `main`/`dev`, install failed, push rejected); (2) a PR from a fork; (3) a merge GitHub itself refuses after the retry (§5). Every other outcome — sensitive files, sync PRs, conflicts, drafts, unverified checks, a human `hold` label — gets **no** `Needs you:` line, no `needs-human` label and no Slack ping; it only shows on the board. A `Needs you:` line also gets the `needs-human` label and **one** Slack ping (COMMON.md format) — exactly one per PR per run, sent here and nowhere else.
+**`Stuck:` is for exactly these cases, and nothing else:** (1) a PR still failing after the fix cap (§4), or a FAIL that can't be fixed automatically (head is `main`/`dev`, install failed, push rejected); (2) a PR from a fork; (3) a merge GitHub itself refuses after the retry (§5). Every other outcome — sensitive files, sync PRs, conflicts (you resolve them in §4), drafts, unverified checks, a human `hold` label — gets **no** `Stuck:` line and no `needs-human` label; it only shows on the board. A `Stuck:` line also gets the `needs-human` label and **one** Slack line, `Stuck: <app short> #<n> <title> — <reason> <url>` (COMMON.md; `<reason>` is the text after `Stuck: ` in the comment) — exactly one per PR per run, sent here and nowhere else. The other Slack lines (`Merged:`, `Fixing:`) are sent where §4 and §5 say.
 
 Removing `needs-human` from a PASS PR makes the next run retry the merge (unless its checks couldn't run).
 
 ## 7. Finish
 
-Run §1 **once more** (collect, then the candidates script; if `collect-exit` isn't `0` here, skip this and go on to the board). Handle any remaining unclaimed `check`, `retake` or `merge-only` lines the same way — **up to 3 more**, then stop; don't run §1 a third time. Then refresh the board (`BOARD.md`, key `pr-check`). Print: PRs checked with verdicts, fixed, merged, handed to Evan.
+Run §1 **once more** (collect, then the candidates script; if `collect-exit` isn't `0` here, skip this and go on to the board). Handle any remaining unclaimed `check`, `retake` or `merge-only` lines the same way — **up to 3 more**, then stop; don't run §1 a third time. Then refresh the board (`BOARD.md`, key `pr-check`). Print: PRs checked with verdicts, fixed, merged, stuck.

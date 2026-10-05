@@ -40,7 +40,7 @@ test("classify: pass not merged → passed with reason", () => {
 });
 
 test("classify: needs-human label → needs_you with the comment's reason", () => {
-  const c = classify(pr({ labels: ["needs-human"], comments: [`${pass}\nNeeds you: touches supabase/migrations/x.sql`] }), OPTS);
+  const c = classify(pr({ labels: ["needs-human"], comments: [`${pass}\nStuck: touches supabase/migrations/x.sql`] }), OPTS);
   assert.deepEqual([c.section, c.reason], ["needs_you", "touches supabase/migrations/x.sql"]);
 });
 
@@ -81,7 +81,7 @@ test("buildBoard: cleans titles and keeps only last-24h merges", () => {
 test("renderBoard", () => {
   const md = renderBoard(buildBoard(data, OPTS), OPTS);
   assert.match(md, /^# PR board/);
-  assert.match(md, /## Needs you \(0\)\n- none/);
+  assert.match(md, /## Stuck \/ needs a look \(0\)\n- none/);
   assert.match(md, /## Checking \(1\)\n- Arc \[#7 Tidy chat chips\]\(https:\/\/github.com\/o\/r\/pull\/7\) — waiting for first check · 0d/);
   assert.match(md, /## Stuck > 2 days \(0\)/);
   assert.match(md, /## Merged in the last 24h \(1\)\n- Arc \[#6 New\]\(u6\) → dev/);

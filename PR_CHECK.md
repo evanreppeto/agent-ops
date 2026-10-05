@@ -121,7 +121,8 @@ const app = getApp("<app>");
 const files = readFileSync("/tmp/<app>-pr-<n>-files.txt", "utf8").split("\u0000").filter(Boolean);
 console.log("SENSITIVE:", JSON.stringify(sensitiveFiles(files, app.sensitive)));
 console.log("BUILD:", needsBuild(files, app.buildTriggers) ? app.buildCommand : "no");
-app.checks.forEach((c, i) => console.log(`CHECK ${i}: ${c}`));'
+app.checks.forEach((c, i) => console.log(`CHECK ${i}: ${c}`));
+console.log("REQUIRED:", JSON.stringify(app.required));'
 ```
 
 **3d. Run the checks.** Run each `CHECK` command, and the `BUILD` command if it isn't `no`, from `<WT>`:
@@ -130,7 +131,7 @@ cd <WT> && timeout 540 sh -c '<cmd>' > /tmp/<app>-pr-<n>-check-<i>.log 2>&1; ech
 ```
 Pass the Bash tool a `timeout` of 600000 (its 10-minute cap). `exit=124` — or the Bash tool itself timing out — → `could not run (timeout)`. A command that fails because the sandbox lacks an env var, secret or network service is `could not run (env)`, not a failure. For lint, only errors count. Both `could not run` results count as **not verified**.
 
-**Base check** for each failing command: run it once on the dev commit this PR was checked against, in a base worktree `<BASE>` = `/tmp/base-<app>-<first 7 of /tmp/<app>-pr-<n>-dev.txt>`: if `<BASE>` doesn't exist yet, create it (`git -C <APP_REPO> worktree add --detach <BASE> "$(cat /tmp/<app>-pr-<n>-dev.txt)"`, then `cd <BASE> && pnpm install --frozen-lockfile`); if it exists, reuse it as is. Then the same form: `cd <BASE> && timeout 540 sh -c '<cmd>'`. Then compare, using the logs (`/tmp/<app>-pr-<n>-check-<i>.log` and your base log): for `pnpm typecheck` / `pnpm test`, list the failing test names or error lines on the PR and on dev.
+**Base check** for each failing command: run it once on the dev commit this PR was checked against, in a base worktree `<BASE>` = `/tmp/base-<app>-<first 7 of /tmp/<app>-pr-<n>-dev.txt>`: if `<BASE>` doesn't exist yet, create it (`git -C <APP_REPO> worktree add --detach <BASE> "$(cat /tmp/<app>-pr-<n>-dev.txt)"`, then `cd <BASE> && pnpm install --frozen-lockfile`); if it exists, reuse it as is. Then the same form: `cd <BASE> && timeout 540 sh -c '<cmd>'`. Then compare, using the logs (`/tmp/<app>-pr-<n>-check-<i>.log` and your base log): for the `REQUIRED` checks, list the failing test names or error lines on the PR and on dev.
 - The PR adds none that dev doesn't also have → the result is `fails on dev too (same failures)`: not counted against the PR, and it **counts as verified** for the §5 merge gate.
 - The PR has any failure dev doesn't → that is a FAIL, as usual.
 - Any other check (lint, build, runner checks), or a typecheck/test result you didn't compare line by line → plain `fails on dev too`: not counted against the PR, but **not verified**.
@@ -212,7 +213,7 @@ Not merged, with a `Not auto-merged:` line, checked in this order:
 - `draft=true` → `Not auto-merged: draft — mark it ready to merge` (it merges when marked ready);
 - `hold=true` → `Not auto-merged: on hold` (if `needs-human` was the only hold label, §6 removes it, and that removal makes the next run merge this PR);
 - `mergeable=dirty` → `Not auto-merged: conflicts with dev` + `Needs you: PR now conflicts with dev`;
-- **checks not verified:** the `pnpm typecheck` and `pnpm test` checks must both have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| pnpm typecheck | <result> |` and `| pnpm test | <result> |` must both be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here` + `Needs you: checks could not run — <which>`.
+- **checks not verified:** every check in the `REQUIRED` list (the app's `required` in `apps.json`) must have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| <cmd> | <result> |` (`<cmd>` = the exact command string) for every `REQUIRED` check must all be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here` + `Needs you: checks could not run — <which>`.
 
 Otherwise merge (the only auto-merge path):
 ```bash

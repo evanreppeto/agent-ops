@@ -3,7 +3,8 @@
     "name": "BSR Manager App",
     "repo": "evanreppeto/clone-BS-migration",
     "short": "BSR",
-    "checks": ["pnpm typecheck", "pnpm test", "pnpm lint"],
+    "checks": ["pnpm typecheck", "pnpm exec vitest run --exclude \"**/*.db.test.ts\"", "pnpm lint"],
+    "required": ["pnpm typecheck", "pnpm exec vitest run --exclude \"**/*.db.test.ts\""],
     "buildCommand": "pnpm build",
     "buildTriggers": ["package.json", "pnpm-lock.yaml", "next.config.*", "middleware.ts", "**/route.ts"],
     "sensitive": [
@@ -77,6 +78,7 @@
       "pnpm --filter ./packages/arc-connector test",
       "pnpm test"
     ],
+    "required": ["pnpm typecheck", "pnpm test"],
     "buildCommand": "ARC_CI_SKIP_BUILD_TYPECHECK=1 pnpm build",
     "buildTriggers": ["package.json", "**/package.json", "pnpm-lock.yaml", "next.config.*", "src/proxy.ts", "middleware.ts", "**/route.ts"],
     "sensitive": [

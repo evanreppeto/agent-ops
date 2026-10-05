@@ -49,6 +49,17 @@ test("every app has the PR-check settings", () => {
   }
 });
 
+test("every app's required checks are among its checks", () => {
+  for (const app of listApps()) {
+    assert.ok(Array.isArray(app.required) && app.required.length >= 2, `${app.key} required`);
+    for (const r of app.required) assert.ok(app.checks.includes(r), `${app.key} required "${r}" is not in checks`);
+  }
+});
+
+test("bsr's test check skips the DB suites", () => {
+  assert.ok(getApp("bsr").required.some((c) => c.includes('--exclude "**/*.db.test.ts"')));
+});
+
 test("bsr has a feedback queue, arc does not yet", () => {
   assert.deepEqual(getApp("bsr").feedback, { team: "BSR", labelId: "de5bbac3-396c-4a26-bb4e-91d9ba0d60a7" });
   assert.equal(getApp("arc").feedback, undefined);

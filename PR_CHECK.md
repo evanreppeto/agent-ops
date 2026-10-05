@@ -55,11 +55,12 @@ If the first id printed isn't yours (`cat /tmp/<app>-claim-<n>.id`), another run
 
 **`retake` job** — edit the existing comment instead of posting a new one:
 ```bash
+rm -f /tmp/<app>-claim-<n>.id
 gh api --paginate --slurp repos/<repo>/issues/<n>/comments > /tmp/<app>-pr-<n>-comments-raw.json; echo "gh-exit=$?"
 node -e 'const fs=require("fs");const m="<!-- pr-check sha=<SHA> -->";const c=require("/tmp/<app>-pr-<n>-comments-raw.json").flat().find(c=>c.body.includes(m));if(c){fs.writeFileSync("/tmp/<app>-claim-<n>.id",String(c.id));fs.writeFileSync("/tmp/<app>-pr-<n>-oldbody.md",c.body)}console.log(c?c.id:"none")'
-gh api -X PATCH repos/<repo>/issues/comments/$(cat /tmp/<app>-claim-<n>.id) -F body=@/tmp/<app>-claim-<n>.md > /dev/null; echo "gh-exit=$?"
+test -s /tmp/<app>-claim-<n>.id && gh api -X PATCH repos/<repo>/issues/comments/$(cat /tmp/<app>-claim-<n>.id) -F body=@/tmp/<app>-claim-<n>.md > /dev/null; echo "patch-exit=$?"
 ```
-`none` → treat it as a `check` job. That comment is now your claim.
+Only if an id was printed (the `.id` file exists) is the PATCH run, and then that comment is your claim. `none` → no comment was touched: treat it as a `check` job and use the `check` block above.
 
 Either way, you'll **edit** the claim comment with the result (`gh api -X PATCH repos/<repo>/issues/comments/$(cat /tmp/<app>-claim-<n>.id) -F body=@<file>`); never post a second result comment for the same SHA.
 
@@ -68,9 +69,10 @@ Either way, you'll **edit** the claim comment with the result (`gh api -X PATCH 
 **3a. Read the PR (nothing from the PR is run yet):**
 ```bash
 gh api repos/<repo>/pulls/<n> > /tmp/<app>-pr-<n>.json; echo "gh-exit=$?"
-node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("/tmp/<app>-pr-<n>.json","utf8"));fs.writeFileSync("/tmp/<app>-pr-<n>-ref.txt",p.head.ref);const same=!!p.head.repo&&p.head.repo.full_name===p.base.repo.full_name;console.log(same?"same-repo":"fork","mergeable="+p.mergeable_state,"draft="+p.draft,"head="+p.head.sha)}catch(e){console.log("fork","mergeable=unknown","draft=unknown","head=unknown")}'
+node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("/tmp/<app>-pr-<n>.json","utf8"));fs.writeFileSync("/tmp/<app>-pr-<n>-ref.txt",p.head.ref);const same=!!p.head.repo&&p.head.repo.full_name===p.base.repo.full_name;console.log(same?"same-repo":"fork","mergeable="+p.mergeable_state,"draft="+p.draft,"head="+p.head.sha)}catch(e){console.log("unreadable")}'
 ```
-- A deleted fork (`head.repo` null), a crash of that node line, or `fork` → **fork**: don't fetch, check out or install anything. Verdict FAIL with `Needs you: PR from a fork — check it by hand`. Go to §6.
+- `unreadable` (the read failed, came back empty, or the node line crashed) → wait 10 seconds (`sleep 10`) and redo 3a **once**. Still `unreadable` → treat it as `fork`.
+- `fork` (including a deleted fork, `head.repo` null) → **fork**: don't fetch, check out or install anything. Verdict FAIL with `Needs you: PR from a fork — check it by hand`. Go to §6.
 - `head=` isn't `<SHA>` → a newer commit landed. Edit your claim to `Superseded by a newer commit — the next run checks it.`, and skip this PR.
 - `mergeable=unknown` → wait 10 seconds (`sleep 10`) and redo 3a, up to 3 times, before deciding. Still unknown → carry on and treat it as not `dirty`.
 - Remember `draft=` for later (§4 and §5).
@@ -99,11 +101,14 @@ app.checks.forEach((c, i) => console.log(`CHECK ${i}: ${c}`));'
 
 **3d. Run the checks.** Run each `CHECK` command, and the `BUILD` command if it isn't `no`, from `<APP_REPO>`:
 ```bash
-timeout 1500 sh -c '<cmd>' > /tmp/<app>-pr-<n>-check-<i>.log 2>&1; echo "exit=$?"
+timeout 540 sh -c '<cmd>' > /tmp/<app>-pr-<n>-check-<i>.log 2>&1; echo "exit=$?"
 ```
-`exit=124` → `could not run (timeout)`. A command that fails because the sandbox lacks an env var, secret or network service is `could not run (env)`, not a failure. For lint, only errors count. Both `could not run` results count as **not verified**.
+Pass the Bash tool a `timeout` of 600000 (its 10-minute cap). `exit=124` — or the Bash tool itself timing out — → `could not run (timeout)`. A command that fails because the sandbox lacks an env var, secret or network service is `could not run (env)`, not a failure. For lint, only errors count. Both `could not run` results count as **not verified**.
 
-**Base check** for each failing command: run it once on `origin/dev` in a worktree (`git -C <APP_REPO> worktree add /tmp/base-<app> origin/dev` once per app per run, `pnpm install --frozen-lockfile` there, then the same `timeout 1500 sh -c` form). Fails the same way on dev → mark it `fails on dev too` and don't count it against the PR (it is also not verified).
+**Base check** for each failing command: run it once on `origin/dev` in a worktree (`git -C <APP_REPO> worktree add /tmp/base-<app> origin/dev` once per app per run, `pnpm install --frozen-lockfile` there, then the same `timeout 540 sh -c` form). Then compare, using the logs (`/tmp/<app>-pr-<n>-check-<i>.log` and your base log): for `pnpm typecheck` / `pnpm test`, list the failing test names or error lines on the PR and on dev.
+- The PR adds none that dev doesn't also have → the result is `fails on dev too (same failures)`: not counted against the PR, and it **counts as verified** for the §5 merge gate.
+- The PR has any failure dev doesn't → that is a FAIL, as usual.
+- Any other check (lint, build, runner checks), or a typecheck/test result you didn't compare line by line → plain `fails on dev too`: not counted against the PR, but **not verified**.
 
 **Review** the diff (`git -C <APP_REPO> diff origin/dev...<SHA>`) for real bugs only: wrong behavior, data loss, security holes, broken flows, new uses of an admin/service-role database client. No style notes.
 
@@ -113,7 +118,12 @@ Verdict: **FAIL** if a check fails that doesn't also fail on dev, or the review 
 
 Skip this section — go to §6 — when:
 - the PR is a draft: drafts are report-only. Result line: `Not auto-merged: draft — mark it ready and I'll try to fix it`;
-- the FAIL already carries a `Needs you:` line from §3 (fork, install failed).
+- the FAIL already carries a `Needs you:` line from §3 (fork, install failed);
+- the PR's head branch is `main` or `dev` — never push a fix there:
+  ```bash
+  node -e 'const r=require("fs").readFileSync("/tmp/<app>-pr-<n>-ref.txt","utf8").trim();console.log(["main","dev"].includes(r)?"PROTECTED "+r:"ok")'
+  ```
+  `PROTECTED` → go to §6 with `Needs you: PR head is <ref>, fix it by hand`.
 
 Count earlier attempts:
 ```bash
@@ -129,10 +139,9 @@ Otherwise, on a local branch at `<SHA>` (`git -C <APP_REPO> checkout -B fix-<n> 
 
 Commit (`fix: make PR #<n> pass checks (<what>)`) and get the new SHA (`git rev-parse HEAD` → `<NEW>`). Then push — first checking the branch name (it is untrusted text):
 ```bash
-git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "ref-exit=$?"
-git -C <APP_REPO> push origin "HEAD:refs/heads/$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "push-exit=$?"
+git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)" && git -C <APP_REPO> push origin "HEAD:refs/heads/$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "push-exit=$?"
 ```
-`ref-exit` not `0` → don't push; go to §6 with `Needs you: can't push — odd branch name`. Push rejected → someone pushed meanwhile: stop on this PR, edit your claim to say so. No fix comment was posted yet, so the rejected push costs no attempt.
+`push-exit` not `0` → find out which half failed: `git check-ref-format --branch "$(cat /tmp/<app>-pr-<n>-ref.txt)"; echo "ref-exit=$?"`. `ref-exit` not `0` → nothing was pushed; go to §6 with `Needs you: can't push — odd branch name`. `ref-exit=0` → the push was rejected, someone pushed meanwhile: stop on this PR, edit your claim to say so. No fix comment was posted yet, so the rejected push costs no attempt.
 
 **Push succeeded — do these, in this order, before anything else:**
 1. Post the claim comment for `<NEW>` (§2 `check` format, id into `/tmp/<app>-claim-<n>-new.id`), with the oldest-claim check. A run fired by your own push may claim `<NEW>` in the same seconds; the oldest claim wins. If you lose, delete yours and stop on this PR after step 3.
@@ -164,7 +173,7 @@ Not merged, with a `Not auto-merged:` line, checked in this order:
 - `draft=true` → `Not auto-merged: draft — mark it ready to merge` (it merges when marked ready);
 - `hold=true` → `Not auto-merged: on hold`;
 - `mergeable=dirty` → `Not auto-merged: conflicts with dev` + `Needs you: PR now conflicts with dev`;
-- **checks not verified:** the `pnpm typecheck` and `pnpm test` checks must both have actually run and passed — not `could not run (env)`, `could not run (timeout)` or `fails on dev too`. For a `merge-only` job read this from the old comment instead: its table rows `| pnpm typecheck | pass |` and `| pnpm test | pass |` must both be there. Otherwise → `Not auto-merged: checks could not run here` + `Needs you: checks could not run — <which>`.
+- **checks not verified:** the `pnpm typecheck` and `pnpm test` checks must both have actually run and passed — not `could not run (env)`, `could not run (timeout)` or a plain `fails on dev too`. Each must be `pass` or `fails on dev too (same failures)`. For a `merge-only` job read this from the old comment instead: its table rows `| pnpm typecheck | <result> |` and `| pnpm test | <result> |` must both be there with `<result>` exactly `pass` or `fails on dev too (same failures)`. Otherwise → `Not auto-merged: checks could not run here` + `Needs you: checks could not run — <which>`.
 
 Otherwise merge (the only auto-merge path):
 ```bash
@@ -182,7 +191,7 @@ Edit your claim comment (`/tmp/<app>-claim-<n>.id`) to:
 ## PR check — PASS|FAIL
 | Check | Result |
 |---|---|
-| <command> | pass / FAIL / fails on dev too / could not run (env) / could not run (timeout) |
+| <command> | pass / FAIL / fails on dev too (same failures) / fails on dev too / could not run (env) / could not run (timeout) |
 **Review:** 0–5 bullets with file:line, or "nothing found".
 **Sensitive files:** list, or none.
 Not auto-merged: <reason>      ← only when not merged

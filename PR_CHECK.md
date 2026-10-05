@@ -32,7 +32,9 @@ for (const app of data.apps) for (const pr of app.open) {
   if (c.state === "none") job = "check";
   else if (c.state === "running") { if (Date.now() - Date.parse(pr.updatedAt) > STALE_MS) job = "retake"; }
   else if (c.state === "fail") { if (!pr.draft && /^draft\b/.test(reason)) job = "retake"; }
-  else if (c.state === "pass") { if (!sync && !pr.draft && /^(draft|on hold)\b/.test(reason)) job = "merge-only"; }
+  // A PASS that was held back or refused at the merge call (draft, on hold, "merge refused", needs-human since removed) gets another go.
+  // Not when the blocker was a real one: sensitive files, a sync PR, or checks that never ran. (Hold labels and `needs-human` are already filtered above.)
+  else if (c.state === "pass") { if (!sync && !pr.draft && !/^(touches|sync PR|checks could not run)/.test(reason)) job = "merge-only"; }
   if (job) out.push({ app: app.key, n: pr.number, sha: pr.headSha, job });
 }
 const rank = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
@@ -46,7 +48,7 @@ node /tmp/candidates.mjs
 Jobs:
 - `check` — no check exists for this SHA yet. Do §2 (post a claim), then §3 onward.
 - `retake` — a check comment for this SHA already exists but needs redoing: its run died (claim still `running` after 90 minutes), or it failed while the PR was a draft and the PR is now ready. Do §2 (take over the existing comment — no new comment), then §3 onward.
-- `merge-only` — it already passed and was held back (draft, or `on hold`), and is now ready / no longer held. Skip §2–§4: go to §5, merge-only variant. (It turns into a `retake` if the pass is stale — see §5.)
+- `merge-only` — it already passed and was held back or refused at the merge (draft, `on hold`, a refused merge whose `needs-human` label Evan removed), and is now ready / no longer held. Skip §2–§4: go to §5, merge-only variant. (It turns into a `retake` if the pass is stale — see §5.)
 
 ## 2. Claim
 
@@ -237,6 +239,8 @@ Write it with the Write tool to `/tmp/<app>-result-<n>.md` and PATCH with `-F bo
 **New SHA passes cleanly:** if the verdict is PASS, the result has no `Needs you:` line, and the PR carries `needs-human` (an earlier SHA needed Evan, or a stale label), remove it: `gh api -X DELETE repos/<repo>/issues/<n>/labels/needs-human` (a 404 is fine). Never remove it when the result has a `Needs you:` line.
 
 Every `Needs you:` line also gets the `needs-human` label and **one** Slack ping (COMMON.md format) — exactly one per PR per run, sent here and nowhere else.
+
+Removing `needs-human` from a PASS PR makes the next run retry the merge (unless it touched sensitive files, is a sync PR, or its checks couldn't run).
 
 Clean up between PRs: `git -C <APP_REPO> reset --hard -q && git -C <APP_REPO> checkout -f --detach origin/dev && git -C <APP_REPO> clean -fdx -e node_modules`.
 

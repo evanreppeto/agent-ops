@@ -3,11 +3,11 @@
 ## Find the clones (once per run)
 
 ```bash
-for r in agent-ops arc-studio clone-BS-migration; do echo "$r=$(find / -maxdepth 5 -type d -name "$r" -not -path '*/node_modules/*' 2>/dev/null | head -1)"; done
+for r in agent-ops arc-studio clone-BS-migration; do echo "$r=$(find / -maxdepth 5 -type d -name "$r" -not -path '*/node_modules/*' 2>/dev/null | while read d; do [ -d "$d/.git" ] && echo "$d" && break; done)"; done
 ```
-Shell variables don't survive between Bash calls: paste the printed absolute paths wherever this file says `<AO>` (agent-ops), `<ARC>` (arc-studio, app `arc`) or `<BSR>` (clone-BS-migration, app `bsr`). `<APP_REPO>` = `<ARC>` or `<BSR>` for the app at hand; `<repo>` = that app's `repo` in `<AO>/apps.json`. Any clone missing → stop and post one Slack message `⚠️ <routine name>: clone of <name> missing, nothing done.`
+Shell variables don't survive between Bash calls: paste the printed absolute paths wherever this file says `<AO>` (agent-ops), `<ARC>` (arc-studio, app `arc`) or `<BSR>` (clone-BS-migration, app `bsr`). `<APP_REPO>` = `<ARC>` or `<BSR>` for the app at hand; `<repo>` = that app's `repo` in `<AO>/apps.json`. Any clone missing → stop and post one Slack message `⚠️ <routine name>: clone of <name> missing, nothing done.` (in DRY_RUN, print it instead)
 
-Then: `cd <AO> && npm ci --silent && npm test`. A failing agent-ops test → stop, Slack once `⚠️ <routine name>: agent-ops tests fail, nothing done.`
+Then: `cd <AO> && npm ci --silent && npm test`. A failing agent-ops install or test → stop, Slack once `⚠️ <routine name>: agent-ops install or tests fail, nothing done.` (in DRY_RUN, print it instead)
 
 ## DRY_RUN
 

@@ -14,6 +14,7 @@ You ship `dev` to `main` and confirm production is healthy. Evan starting this r
 - **Pinning**: print the SHAs labelled, as two separate lines (§1). If the clone is shallow (`git -C <APP_REPO> rev-parse --is-shallow-repository` prints `true`), run `git -C <APP_REPO> fetch --unshallow origin main dev` first.
 - **Order of work**: Phase A = §1–§5 for every app (bsr, then arc) **before anything is merged**, so a slow second app can't get cut off mid-merge. Phase B = §6–§9 for each app that passed Phase A (bsr, then arc). Then §10.
 - **Quoting**: always quote `"<SHA>^{tree}"` and `"<SHA>^{commit}"`.
+- **Blocked by the sandbox**: if any step is denied by the sandbox's permission system, don't work around it or retry it another way. If nothing is merged yet (anything up to and including the §6 step 5 merge call itself) → hold with reason `blocked by sandbox permission at §<n>: <reason>`. Once the merge has succeeded → stop this app and post `Needs you: <app short> release — merged <PR url>, but §<n> was blocked by sandbox permission (<reason>); finish it by hand` (no Linear Done).
 
 ## 1. Pin and compare
 

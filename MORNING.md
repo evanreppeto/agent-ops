@@ -15,7 +15,7 @@ One Slack message before Evan starts work. Read `COMMON.md` first. If `npm ci` f
 
 ```
 ☀️ Morning — <weekday, Mon D>
-• Stuck: <count> <list "Arc #12 — reason" items, max 5, or "nothing">
+• Stuck: <count>  ← when the count is above 0, follow it with " — " and up to 5 items like "Arc #12 reason"; when it is 0, write just "Stuck: 0"
 • Failing / being fixed: <count>
 • Stuck > 2 days: <count>
 • Merged in the last 24h: <count>

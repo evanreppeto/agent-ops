@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { classify, buildBoard, renderBoard, ROUTINES } from "../lib/board.mjs";
+import { waitingFromCommits } from "../lib/waiting.mjs";
 import { prCheckMarker, fixMarker } from "../lib/pr-check.mjs";
 
 const SHA = "c".repeat(40);
@@ -86,4 +87,56 @@ test("renderBoard", () => {
   assert.match(md, /## Stuck > 2 days \(0\)/);
   assert.match(md, /## Merged in the last 24h \(1\)\n- Arc \[#6 New\]\(u6\) → dev/);
   assert.match(md, /_Last updated Mon 12:00 PM ET by pr-check_$/);
+});
+
+const waitData = (over) => ({
+  generatedAt: hoursAgo(0),
+  apps: [{ key: "arc", short: "Arc", open: [], merged: [], ...over }, { key: "bsr", short: "BSR", open: [], merged: [] }],
+});
+const w = (n) => ({ number: n, title: `Change [${n}]`, url: `https://github.com/o/r/pull/${n}` });
+
+test("renderBoard: waiting section lists PRs per app, empty app says nothing waiting", () => {
+  const md = renderBoard(buildBoard(waitData({ waiting: [w(3), w(2)] }), OPTS), OPTS);
+  assert.match(md, /## Passed, waiting to merge \(0\)\n- none\n\n## Waiting to ship \(2\)\n- Arc: 2 PRs on dev, not in main\n  - \[#3 Change 3\]\(https:\/\/github.com\/o\/r\/pull\/3\)\n  - \[#2 Change 2\]\(https:\/\/github.com\/o\/r\/pull\/2\)\n- BSR: nothing waiting\n\n## Stuck > 2 days/);
+});
+
+test("renderBoard: waiting list caps at 15 with '… and k more'", () => {
+  const prs = Array.from({ length: 18 }, (_, i) => w(100 - i));
+  const md = renderBoard(buildBoard(waitData({ waiting: prs }), OPTS), OPTS);
+  assert.match(md, /## Waiting to ship \(18\)\n- Arc: 18 PRs on dev, not in main\n/);
+  assert.equal(md.split("\n").filter((l) => l.startsWith("  - [#")).length, 15);
+  assert.match(md, /  - … and 3 more\n/);
+});
+
+test("renderBoard: promotionPr adds the Ready to ship line; one PR is singular", () => {
+  const md = renderBoard(buildBoard(waitData({ waiting: [w(9)], promotionPr: { number: 40, url: "https://github.com/o/r/pull/40" } }), OPTS), OPTS);
+  assert.match(md, /- Arc: 1 PR on dev, not in main — Ready to ship: \[#40\]\(https:\/\/github.com\/o\/r\/pull\/40\) — click Merge \(Create a merge commit\)\n/);
+});
+
+test("renderBoard: truncated scan is flagged", () => {
+  const md = renderBoard(buildBoard(waitData({ waiting: [w(1)], waitingTruncated: true }), OPTS), OPTS);
+  assert.match(md, /  - … older commits not scanned/);
+});
+
+test("renderBoard: old data without waiting still renders (0 waiting)", () => {
+  const md = renderBoard(buildBoard(data, OPTS), OPTS);
+  assert.match(md, /## Waiting to ship \(0\)\n- Arc: nothing waiting\n- BSR: nothing waiting\n/);
+  assert.doesNotThrow(() => renderBoard({ rows: buildBoard(data, OPTS).rows, merged: [] }, OPTS));
+});
+
+test("waitingFromCommits: squash + merge subjects, dedupe, skips main→dev syncs, newest first", () => {
+  const commits = [
+    "Add chat chips (#12)\n\nbody",
+    "Merge pull request #11 from o/claude/x\n\nFix the thing",
+    "Merge pull request #10 from o/sync-main\n\nSync main into dev",
+    "Merge branch 'main' into dev",
+    "Tweak (#12)",
+    "wip commit with no PR",
+    "Merge pull request #13 from o/y",
+  ];
+  assert.deepEqual(waitingFromCommits(commits, "o/r"), [
+    { number: 12, title: "Add chat chips", url: "https://github.com/o/r/pull/12" },
+    { number: 11, title: "Fix the thing", url: "https://github.com/o/r/pull/11" },
+    { number: 13, title: "PR #13", url: "https://github.com/o/r/pull/13" },
+  ]);
 });

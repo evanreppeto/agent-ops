@@ -226,52 +226,13 @@ git -C <APP_REPO> fetch origin main; SHA=$(cat /tmp/rel-<app>-deployed.txt); ech
 ```
 `exit=0` → live. A failed fetch just counts as not live yet. Otherwise repeat both every 60 seconds for up to 20 minutes; still not live → result `not live after 20 min — check Vercel` (skip the page check).
 
-**Pages load** (no login, no clicks): write and run this fixed script. Replace `<AO>` in it first.
+**Pages load** (plain HTTP, no browser, no login): fetches the login page and the deploy-probe page with curl, retrying each up to 3 times, 10 s apart (the sandbox proxy sometimes returns a stray 502).
 ```bash
-cat > /tmp/prod-check.mjs <<'EOF'
-import { chromium } from "<AO>/node_modules/@playwright/test/index.mjs";
-import { getApp } from "<AO>/lib/config.mjs";
-import { withoutBaseline } from "<AO>/lib/console-baseline.mjs";
-import { isIgnoredConsoleError } from "<AO>/lib/console-ignore.mjs";
-const app = getApp(process.argv[2]);
-const vp = app.viewports[0];
-let browser;
-let context;
-try {
-  browser = await chromium.launch();
-  context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
-} catch (e) {
-  console.log(`PROD-CHECK ERROR (tooling): ${String(e.message).split("\n")[0]}`);
-  process.exit(2);
-}
-const failures = [];
-for (const path of [...new Set([app.login.path, app.deployProbe.path])]) {
-  const page = await context.newPage();
-  const errors = [];
-  page.on("console", (m) => { if (m.type() === "error" && !isIgnoredConsoleError(app, m.text(), m.location().url)) errors.push(m.text()); });
-  page.on("pageerror", (e) => errors.push(String(e)));
-  try {
-    const res = await page.goto(new URL(path, app.prodUrl).toString(), { waitUntil: "networkidle", timeout: 45000 });
-    const status = res ? res.status() : 0;
-    const text = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
-    if (status === 0 || status >= 400) failures.push(`${path}: HTTP ${status}`);
-    if (/something went wrong|application error/i.test(text)) failures.push(`${path}: error text on page`);
-    const fresh = withoutBaseline(errors, app.consoleBaseline ?? []);
-    if (fresh.length) failures.push(`${path}: console errors: ${fresh.slice(0, 3).join(" | ")}`);
-  } catch (e) {
-    failures.push(`${path}: could not load (${String(e.message).split("\n")[0]})`);
-  }
-  await page.close();
-}
-await browser.close();
-if (failures.length) { console.log("PROD-CHECK FAILED"); for (const f of failures) console.log(`- ${f}`); process.exit(1); }
-console.log("PROD-CHECK OK");
-EOF
-cd <AO> && npx playwright install chromium > /tmp/rel-playwright.log 2>&1; echo "playwright-install-exit=$?"; bash scripts/trust-sandbox-ca.sh > /dev/null 2>&1; timeout 300 node /tmp/prod-check.mjs <app> > /tmp/rel-<app>-prodcheck.txt 2>&1; echo "exit=$?"; cat /tmp/rel-<app>-prodcheck.txt
+timeout 300 node <AO>/scripts/prod-check.mjs <app> > /tmp/rel-<app>-prodcheck.txt 2>&1; echo "exit=$?"; cat /tmp/rel-<app>-prodcheck.txt
 ```
 - `PROD-CHECK OK` → page check OK.
 - `PROD-CHECK FAILED` → result `prod check failed: <first failure>` + the rollback line.
-- Anything else (`PROD-CHECK ERROR (tooling)`, a crash, a timeout, no `PROD-CHECK` line at all, or a failed `playwright install` with no page loaded) → the check **didn't run**: result `prod check could not run`. A tooling problem is not a prod problem: **no rollback line**, still Stuck, and no Linear Done.
+- Anything else (a crash, a timeout, no `PROD-CHECK` line at all) → the check **didn't run**: result `prod check could not run`. That is not a prod problem: **no rollback line**, still Stuck, and no Linear Done.
 
 **Migrations applied** (only if `M` is above 0; otherwise skip). The merge push triggers the repo's `migrate-prod.yml`:
 ```bash

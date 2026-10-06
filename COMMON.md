@@ -42,12 +42,13 @@ Only to channel `C0C6A1G03JS` (#agent-pipeline). These posts are **informational
 | A PR still failing after the fix cap, a PR from a fork, a failure that can't be fixed automatically, or a merge GitHub refuses after the retry (PR_CHECK §6) | `Stuck: <app short> #<n> <title> — <reason> <url>` |
 | Feedback fixer opened a PR (FEEDBACK_FIXER §2 step 6) | `Feedback → PR: <app short> <ISSUE-ID> <issue title> → #<n> <url>` |
 | Feedback fixer can't push, or opened only a draft (FEEDBACK_FIXER §2 steps 5 and 7) | `Stuck: <app short> <ISSUE-ID> <issue title> — <reason> <url>` |
-| Release: the promotion PR is ready but the merge was denied or refused (RELEASE §6 step 5) | `Ready to ship: <app short> #<n> — <P> PRs, <T> tickets — click Merge (choose "Create a merge commit") <url>` |
+| Release: the promotion PR is ready but the merge was denied or refused (RELEASE §6 step 5) | `Ready to ship: <app short> #<n> — <P> PRs, <T> tickets — click Merge and choose *Create a merge commit* (NOT Squash) <url>` |
 | Release: the promotion PR merged (RELEASE §6 step 5) | `Merged to main: <app short> #<n> — <P> PRs, <T> tickets <url>` |
 | Release or Ship check: prod confirmed healthy (RELEASE §7 → §9, SHIP_CHECK) | `Shipped to prod: <app short> — prod check OK` |
 | Release or Ship check: a prod problem after the merge (RELEASE §7 → §9, SHIP_CHECK) | `Stuck: <app short> release — <result> <url>` + the rollback line |
 | Release: a hold (RELEASE §9) | `Stuck: <app short> release held — <reason>` |
 | A main → dev sync PR merged by Release | `Merged: <app short> #<n> main → dev sync` |
+| Ship check: a promotion was squash-merged and a keep-dev sync PR was opened (SHIP_CHECK §6) | `Sync opened: <app short> #<n> main → dev (squash promotion) <url>` |
 | Board update failed (BOARD.md) | `Stuck: board update failed in <routine-key> — <first stderr line>` |
 | A routine can't start or list its work (clone missing, agent-ops install or tests fail, PR list unreadable, morning's board unavailable) | `Stuck: <routine name> — <what failed>` |
 | Morning catch-up | the fixed message in MORNING.md |

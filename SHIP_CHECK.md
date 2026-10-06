@@ -80,7 +80,7 @@ where `<MAIN_SHA>` is main-before (the merge's first parent) and `<DEV_SHA>` is 
 
 ## 5. Slack, then the marker
 
-Formats are in `COMMON.md`. Post one line per PR (not in DRY_RUN; print it instead):
+Formats are in `COMMON.md`. **Race guard:** immediately before posting any Slack line for a PR, re-read its comments (`gh api --paginate "repos/<repo>/issues/<N>/comments" > /tmp/ship-<app>-<N>-comments2.json; echo "gh-exit=$?"`) and run the §1 marker `grep -cF` again. If the marker is now present (Release finished it, or another run did), post nothing for this PR and comment no marker. Then post one line per PR (not in DRY_RUN; print it instead):
 - all healthy: `Shipped to prod: <app short> — prod check OK` (add ` not marked Done: <id> (<label>), …` if §4 left any);
 - a prod problem: `Stuck: <app short> release — <result> <PR url>` + the rollback line (or the migrations line) from `RELEASE.md` §7;
 - the "could not read" and sandbox cases above post their own Stuck line and no marker.
@@ -91,6 +91,27 @@ gh api -X POST "repos/<repo>/issues/<N>/comments" -F body=@/tmp/ship-<app>-<N>-c
 ```
 A failed comment → say so in the summary (the next run will repeat the check and Slack line, which is the safe direction).
 
-## 6. Finish
+## 6. Squash-merged promotion: keep-dev sync PR
+
+Only when §2 found `parents=1` for a promotion PR **and** its result was posted in §5. Squashing leaves `main` with a commit `dev` lacks, so open a sync PR now to stop drift. Not in DRY_RUN (print the commands). Never merge it yourself: PR check merge-commits `claude/sync-*` PRs automatically.
+
+1. Make sure no sync is already open: `gh api "repos/<repo>/pulls?state=open&base=dev&per_page=50" --jq '.[] | select(.head.ref | startswith("claude/sync-")) | .number' > /tmp/ship-<app>-sync-open.txt; echo "gh-exit=$?"`. A non-empty file → skip this section (one is already open). A failed read → say so in the summary and skip.
+2. Fresh worktree on a new branch (`<b>` = `claude/sync-main-into-dev-<DATE>`, then `-2`, `-3`… while `git -C <APP_REPO> ls-remote --exit-code origin "refs/heads/<b>"` exits 0; exit 2 = free). Use a path under `/tmp/ship-<app>-sync` that does not exist yet:
+   ```bash
+   git -C <APP_REPO> fetch origin main dev; echo "fetch-exit=$?"
+   git -C <APP_REPO> worktree add -b <b> /tmp/ship-<app>-sync origin/dev; echo "worktree-exit=$?"
+   cd /tmp/ship-<app>-sync && git merge -s ours origin/main -m "Sync main into dev, keeping dev's tree"; echo "merge-exit=$?"
+   git -C /tmp/ship-<app>-sync rev-parse "HEAD^{tree}"
+   git -C /tmp/ship-<app>-sync rev-parse "origin/dev^{tree}"
+   ```
+   Any non-zero exit, or the two tree lines differing → do not push; post `Stuck: <app short> release — squash promotion #<N> needs a manual main → dev sync (<reason>) <PR url>` and stop this section.
+3. Check the push URL is `evanreppeto/<repo-name>` (as in `RELEASE.md` §6 step 1), push, and open the PR into `dev`. Write the body with the Write tool to `/tmp/ship-<app>-sync-body.md`: `Keep-dev sync after squash-merged promotion #<N>. Merge with a merge commit; the tree equals dev's, so no code changes.`
+   ```bash
+   git -C /tmp/ship-<app>-sync push origin "<b>:refs/heads/<b>"; echo "push-exit=$?"
+   gh api -X POST repos/<repo>/pulls -f title="Sync main into dev (after squash promotion #<N>)" -f head=<b> -f base=dev -F body=@/tmp/ship-<app>-sync-body.md --jq '.number, .html_url'; echo "gh-exit=$?"
+   ```
+4. Post `Sync opened: <app short> #<n> main → dev (squash promotion) <url>` (`<n>`/`<url>` = the new sync PR's).
+
+## 7. Finish
 
 Refresh the board (`BOARD.md`, key `ship-check`). Print one row per PR checked: app, PR url, result.

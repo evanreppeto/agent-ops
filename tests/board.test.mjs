@@ -14,7 +14,7 @@ const pr = (over = {}) => ({
 const pass = `${prCheckMarker(SHA)}\n## PR check — PASS`;
 const fail = `${prCheckMarker(SHA)}\n## PR check — FAIL`;
 
-test("routine keys", () => assert.deepEqual(ROUTINES, ["pr-check", "feedback-fixer", "release", "morning"]));
+test("routine keys", () => assert.deepEqual(ROUTINES, ["pr-check", "feedback-fixer", "release", "ship-check", "morning"]));
 
 test("classify: no check yet → checking", () => {
   assert.deepEqual(classify(pr(), OPTS), { section: "checking", reason: "waiting for first check", ageDays: 0 });

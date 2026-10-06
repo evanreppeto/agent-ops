@@ -9,7 +9,8 @@ Design: `arc-studio/docs/superpowers/specs/2026-10-04-routines-reset-design.md`.
 |---|---|---|
 | PR check + fix | a PR opens / gets a push (GitHub trigger) + 7:30am ET weekdays | `PR_CHECK.md` |
 | Feedback fixer | 6am ET weekdays | `FEEDBACK_FIXER.md` |
-| Release | only when Evan runs it | `RELEASE.md` |
+| Release | only when Evan runs it (opens and tests the promotion PR; Evan clicks Merge if the sandbox refuses it) | `RELEASE.md` |
+| Ship check | a PR into `main` is merged (webhook), or by hand | `SHIP_CHECK.md` |
 | Morning catch-up | 8am ET weekdays | `MORNING.md` |
 
 All of them follow `COMMON.md` and finish by rebuilding the PR board (`BOARD.md`): issue #1 in this repo, linked from #agent-pipeline. Change a routine's behavior by editing its file here — the routine's prompt is just "Read and follow agent-ops/<FILE>.md".

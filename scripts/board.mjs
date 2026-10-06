@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Renders the PR board markdown from collect-prs.mjs output.
-// Usage: node scripts/board.mjs /tmp/prs.json <pr-check|feedback-fixer|release|morning>
+// Usage: node scripts/board.mjs /tmp/prs.json <pr-check|feedback-fixer|release|ship-check|morning>
 import { readFileSync } from "node:fs";
 import { getPipeline } from "../lib/config.mjs";
 import { buildBoard, renderBoard, ROUTINES } from "../lib/board.mjs";

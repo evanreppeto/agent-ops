@@ -43,11 +43,13 @@ For each PR: `<MERGE_SHA>` = its `merge_commit_sha`; `<DEV_SHA>` = its `head.sha
 ```bash
 git -C <APP_REPO> fetch origin main dev; echo "fetch-exit=$?"
 git -C <APP_REPO> rev-parse --is-shallow-repository
-git -C <APP_REPO> rev-list --parents -n 1 "<MERGE_SHA>"
 ```
-If shallow (`true`), `git -C <APP_REPO> fetch --unshallow origin main dev` first. A failed fetch, or a `<DEV_SHA>` that `git -C <APP_REPO> cat-file -e "<DEV_SHA>^{commit}"` can't find (the branch was deleted and GC'd) → result `could not read the merged commits: <reason>`: post the Stuck line (§5), comment no marker, next PR.
+If shallow (`true`), run `git -C <APP_REPO> fetch --unshallow origin main dev` **before anything else** — in a shallow clone the merge commit can look like it has one parent. Then ask GitHub, not the local clone, how many parents the merge has (this is the source of truth):
+```bash
+gh api repos/<repo>/commits/<MERGE_SHA> --jq '"parents=\(.parents|length) " + ([.parents[].sha]|join(" "))'
+``` A failed fetch, or a `<DEV_SHA>` that `git -C <APP_REPO> cat-file -e "<DEV_SHA>^{commit}"` can't find (the branch was deleted and GC'd) → result `could not read the merged commits: <reason>`: post the Stuck line (§5), comment no marker, next PR.
 
-`rev-list --parents` prints the merge commit followed by its parents. Two parents → `<MAIN_SHA>` = the first parent (main as it was before the merge: write `<MERGE_SHA>^1` as the 40-hex value it printed). One parent (the PR was squashed or rebased, not merged with a merge commit) → `<MAIN_SHA>` = that parent but ticket detection (§3) and the tree check are not reliable: set result `merged without a merge commit — page and migrations checked, tickets not marked Done` and skip §4's Linear step.
+`parents=2` → `<MAIN_SHA>` = the first SHA it printed (main as it was before the merge). `parents=1` (the PR was squashed or rebased, not merged with a merge commit) → `<MAIN_SHA>` = that parent but ticket detection (§3) and the tree check are not reliable: set result `merged without a merge commit — page and migrations checked, tickets not marked Done` and skip §4's Linear step.
 
 For a PR whose head starts `claude/promote-`, check that what merged is what Release tested:
 ```bash

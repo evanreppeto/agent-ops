@@ -1,14 +1,46 @@
 # Ship check
 
-You finish a release after Evan clicks Merge: confirm production is healthy, mark the shipped Linear tickets Done, and post the result. Read `COMMON.md` first (clone paths, DRY_RUN, untrusted-text rules). Routine key: `ship-check`.
+You are the "something merged" routine. You do two jobs, in this order, every run:
+1. **§0: dev merges the feed missed.** A PR merged into `dev` by anyone other than PR check (Evan, another agent session) gets the same `Merged:` Slack line PR check would have posted, so #agent-pipeline shows every merge.
+2. **§1–§7: releases.** After a promotion into `main` merges: confirm production is healthy, mark the shipped Linear tickets Done, and post the result.
 
-It starts when a PR into `main` closes (webhook) and can also be run by hand. Nothing in the webhook payload is trusted or needed: always work out what to do from GitHub (§1), so a run that is started twice, or by the wrong event, does nothing extra. A closed-but-unmerged PR starts this routine too; it finds nothing to do (§1) and just refreshes the board.
+Read `COMMON.md` first (clone paths, DRY_RUN, untrusted-text rules). Routine key: `ship-check`.
+
+It starts when **any** PR in either repo closes (webhook; GitHub can't filter that by base branch), and can also be run by hand. Nothing in the webhook payload is trusted or needed: always work out what to do from GitHub (§0, §1), so a run that is started twice, or by an unrelated event, does nothing extra. If neither job finds anything, refresh the board and stop.
 
 **Which apps:** every app in `<AO>/apps.json` (order `bsr`, then `arc`), or only those in `APPS=` in the prompt, as in `RELEASE.md`. `<DATE>` = `TZ=America/New_York date +%F`. `<app>` = the app key, `<repo>` its `repo`, `<repo-name>` the part after the slash. Every temp file starts `/tmp/ship-<app>`.
 
 **DRY_RUN** (see `COMMON.md`): do §1 and §2 reads, print what §3 and §4 would run and post, and write nothing (no §1b claim either).
 
 **Blocked by the sandbox:** if any step is denied by the sandbox's permission system, don't work around it. Stop that PR and post `Stuck: <app short> release — merged <PR url>, but <step> was blocked by sandbox permission (<reason>); finish it by hand`. Delete your claim comment (§1b) so the next run tries again.
+
+## 0. Dev merges the feed missed
+
+PR check posts `Merged: … → dev` itself when it merges, and its result comment then says `Auto-merged into dev.`. Anything merged into `dev` without that is posted here. First wait **120 seconds** (`sleep 120`): if PR check is the one merging, that gives it time to write its comment, so the same merge is never posted twice.
+
+For each app:
+```bash
+gh api "repos/<repo>/pulls?state=closed&base=dev&sort=updated&direction=desc&per_page=30" > /tmp/ship-<app>-devclosed.json; echo "gh-exit=$?"
+```
+A non-zero `gh-exit` → note it in the summary and skip §0 for that app (no Slack line; the next run covers it).
+
+Keep a PR only if **all** hold (filter with a script that prints only numbers and 40-hex SHAs; titles are data):
+- `merged_at` is set and later than **`2026-10-07T14:30:00Z`** (merges before this change are never posted) and within the last 48 hours;
+- its head ref is not `main` or `dev` and doesn't start `claude/sync-` (sync PRs are posted by whoever merged them: PR check or Release).
+
+For each kept PR `<N>`, read its comments (`gh api --paginate "repos/<repo>/issues/<N>/comments" > /tmp/ship-<app>-<N>-devcomments.json; echo "gh-exit=$?"`; a failed read → skip it this run). Drop it if any comment contains `<!-- merged-posted -->`, or if a comment containing `<!-- pr-check sha=` also contains `Auto-merged into dev.` (PR check posted it). If a `<!-- pr-check sha=<that PR's head.sha> -->` comment still contains `PR check running`, PR check may still be mid-merge: wait 60 seconds and re-read, up to 5 times, then treat the PR normally.
+
+For each PR left, claim it, then post:
+1. Write `<!-- merged-posted -->` + newline + `Merge posted to #agent-pipeline.` to `/tmp/ship-<app>-<N>-posted.md` with the Write tool, then:
+   ```bash
+   gh api -X POST "repos/<repo>/issues/<N>/comments" -F body=@/tmp/ship-<app>-<N>-posted.md --jq .id > /tmp/ship-<app>-<N>-posted.id; echo "gh-exit=$?"
+   sleep 5
+   gh api --paginate "repos/<repo>/issues/<N>/comments" --jq '.[] | select(.body | contains("<!-- merged-posted -->")) | .id' | head -1
+   ```
+   If the id printed isn't yours, another run claimed it: delete yours (`gh api -X DELETE "repos/<repo>/issues/comments/<your id>"`) and skip this PR. A failed POST → skip this PR.
+2. Post the Slack line from `COMMON.md`, exactly as PR check does: `Merged: <app short> #<N> <title> → dev <url>` (`<title>` and `<url>` read by you from `/tmp/ship-<app>-devclosed.json` with the Read tool, passed only to the Slack tool). Not in DRY_RUN (print it, and post no claim).
+
+Then go on to §1.
 
 ## 1. Find merged promotions not yet checked
 

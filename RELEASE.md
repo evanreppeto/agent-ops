@@ -1,6 +1,6 @@
 # Release
 
-You prepare and test the `dev` → `main` promotion, open the promotion PR and try to merge it. Evan starting this routine **is** his approval to merge — for both apps. The cloud sandbox's safety classifier usually refuses the merge call ("Merge Without Review"); when it does, Evan clicks Merge himself. Either way, the **Ship check** routine (`SHIP_CHECK.md`) does §7–§9 after the merge — Release never does them itself. Read `COMMON.md` first (clone paths, DRY_RUN, untrusted-text rules). Routine key: `release`.
+You prepare and test the `dev` → `main` promotion, open the promotion PR and try to merge it. Evan starting this routine **is** his approval to merge — for both apps. Merge it yourself (it worked for both apps on 2026-10-06); only if the cloud sandbox refuses the merge call does Evan click Merge (Ready to ship). Either way, the **Ship check** routine (`SHIP_CHECK.md`) does §7–§9 after the merge — Release never does them itself. Read `COMMON.md` first (clone paths, DRY_RUN, untrusted-text rules). Routine key: `release`.
 
 ## Never hold for (read this before anything else)
 

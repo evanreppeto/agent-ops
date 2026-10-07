@@ -36,7 +36,7 @@ Only to channel `C0C6A1G03JS` (#agent-pipeline). These posts are **informational
 
 | Event | Line |
 |---|---|
-| PR merged into `dev` (PR_CHECK §5, right after the merge call succeeds) | `Merged: <app short> #<n> <title> → dev <url>` — append ` (sync, merge commit)` for a sync PR |
+| PR merged into `dev`: by PR check (PR_CHECK §5, right after the merge call succeeds), or by anyone else (SHIP_CHECK §0, so every merge shows up) | `Merged: <app short> #<n> <title> → dev <url>` — append ` (sync, merge commit)` for a sync PR |
 | A fix attempt pushed (PR_CHECK §4, after the push succeeds) | `Fixing: <app short> #<n> <title> — <one-line what failed> (try <k>/3) <url>` |
 | A conflict resolved and pushed (PR_CHECK §4, after the push succeeds) | `Fixing: <app short> #<n> <title> — merged latest dev and resolved conflicts (try <k>/3) <url>` |
 | A PR still failing after the fix cap, a PR from a fork, a failure that can't be fixed automatically, or a merge GitHub refuses after the retry (PR_CHECK §6) | `Stuck: <app short> #<n> <title> — <reason> <url>` |

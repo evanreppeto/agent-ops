@@ -9,6 +9,16 @@ Shell variables don't survive between Bash calls: paste the printed absolute pat
 
 Then: `cd <AO> && npm ci --silent && npm test`. A failing agent-ops install or test → stop, Slack once `Stuck: <routine name> — agent-ops install or tests fail, nothing done.` (in DRY_RUN, print it instead)
 
+## Commit identity
+
+Every commit or merge commit a routine makes goes through `<AO>/scripts/git-as-evan.sh` instead of plain `git` (same arguments, e.g. `<AO>/scripts/git-as-evan.sh -C <WT> commit -F <msg>`). It sets Evan's GitHub identity as author and committer. A commit authored by the sandbox's default `agent-ops@users.noreply.github.com` gets its Vercel deployment **Blocked** ("Vercel user not found"), so the PR has no preview and a red Vercel check. Read-only git commands (`fetch`, `log`, `diff`, `worktree add`, `push`) can stay plain `git`.
+
+Before every push, check the commits you made (`<from>` = the commit you started from):
+```bash
+git -C <WT> log --format='%h %ae %ce' <from>..HEAD
+```
+Every line must show `121970940+evanreppeto@users.noreply.github.com` twice. Commits in that range that came from `origin/dev` (a merge brings them in) keep their own authors and are fine; only commits you created must match. One of yours doesn't → redo it with `<AO>/scripts/git-as-evan.sh -C <WT> commit --amend --no-edit --reset-author` if it is the last commit; otherwise don't push, and treat it as a failed step.
+
 ## DRY_RUN
 
 DRY_RUN is ON when the routine prompt contains `DRY_RUN=1`. In a dry run you read everything and run tests, but write nothing: no GitHub comments, labels, merges, pushes or PRs; no Linear writes; no Slack messages; no board issue edit. Print what you would have written instead.

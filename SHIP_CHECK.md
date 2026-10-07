@@ -154,7 +154,7 @@ Only when §2 found `parents=1` for a promotion PR **and** its result was posted
    ```bash
    git -C <APP_REPO> fetch origin main dev; echo "fetch-exit=$?"
    git -C <APP_REPO> worktree add -b <b> /tmp/ship-<app>-sync origin/dev; echo "worktree-exit=$?"
-   cd /tmp/ship-<app>-sync && git merge -s ours origin/main -m "Sync main into dev, keeping dev's tree"; echo "merge-exit=$?"
+   cd /tmp/ship-<app>-sync && <AO>/scripts/git-as-evan.sh merge -s ours origin/main -m "Sync main into dev, keeping dev's tree"; echo "merge-exit=$?"
    git -C /tmp/ship-<app>-sync rev-parse "HEAD^{tree}"
    git -C /tmp/ship-<app>-sync rev-parse "origin/dev^{tree}"
    ```

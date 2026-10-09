@@ -14,7 +14,10 @@
       "app/api/cron/payroll-approval/**", "lib/payroll-period*", ".github/workflows/**"
     ],
     "feedback": { "team": "BSR", "labelId": "de5bbac3-396c-4a26-bb4e-91d9ba0d60a7" },
-    "hold": { "label": "My Agent", "since": "2026-10-07", "titleMatch": "\\bmy agent\\b|personal[- ]agent|agent[- ]pilot", "paths": ["lib/agent-pilot/**", "components/agent-pilot/**", "tests/agent-pilot/**", "app/actions/agent-briefing.ts"] },
+    "hold": [
+      { "label": "My Agent", "since": "2026-10-07", "titleMatch": "\\bmy agent\\b|personal[- ]agent|agent[- ]pilot", "paths": ["lib/agent-pilot/**", "components/agent-pilot/**", "tests/agent-pilot/**", "app/actions/agent-briefing.ts"] },
+      { "label": "Scheduling", "since": "2026-10-09", "titleMatch": "schedul|calendar|\\bmy hours\\b|who.s working|dispatch", "paths": ["components/schedule/**", "lib/scheduling/**", "lib/schedule/**", "tests/scheduling/**", "app/schedule/**"] }
+    ],
     "devUrl": "https://dev.bigshouldersmanager.com",
     "prodUrl": "https://www.bigshouldersmanager.com",
     "viewports": [

@@ -7,16 +7,16 @@ import { getApp } from "../lib/config.mjs";
 const HOLD = { label: "My Agent", titleMatch: "\\bmy agent\\b|personal[- ]agent", paths: ["lib/agent-pilot/**", "components/agent-pilot/**"] };
 
 test("isHeld: by title, by path, and nothing without a hold", () => {
-  assert.equal(isHeld(HOLD, { title: "My Agent: owner-only production mode [preview]" }), true);
-  assert.equal(isHeld(HOLD, { title: "Give approved dev accounts private personal-agent trials" }), true);
-  assert.equal(isHeld(HOLD, { title: "Refactor shell", files: ["app/layout.tsx", "lib/agent-pilot/access.ts"] }), true);
+  assert.equal(isHeld(HOLD, { title: "My Agent: owner-only production mode [preview]" }), "My Agent");
+  assert.equal(isHeld(HOLD, { title: "Give approved dev accounts private personal-agent trials" }), "My Agent");
+  assert.equal(isHeld(HOLD, { title: "Refactor shell", files: ["app/layout.tsx", "lib/agent-pilot/access.ts"] }), "My Agent");
   assert.equal(isHeld(HOLD, { title: "Fit Live Walkthrough capture screen to phones", files: ["components/ai-assistant/atlas-workspace.tsx"] }), false);
   assert.equal(isHeld(undefined, { title: "My Agent: anything" }), false);
 });
 
 test("BSR hold holds My Agent and not the walkthrough work (2026-10-07)", () => {
   const hold = getApp("bsr").hold;
-  assert.equal(isHeld(hold, { title: "My Agent: new design, plus the agent front door on the dev pilot (BSR-1382)" }), true);
+  assert.equal(isHeld(hold, { title: "My Agent: new design, plus the agent front door on the dev pilot (BSR-1382)" }), "My Agent");
   assert.equal(isHeld(hold, { title: "Fix Atlas Live rejecting dev seed jobs [preview]", files: ["lib/atlas/row-ids.ts"] }), false);
   assert.equal(isHeld(hold, { title: "Atlas on walkthroughs: quiet-stretch reminders", files: ["lib/atlas/walkthrough-agent.ts"] }), false);
 });
@@ -30,7 +30,7 @@ test("waitingFromCommits: drops PRs already cherry-picked to main, marks held on
   ];
   const shipped = shippedFromMain([`Fit capture screen\n\n(cherry picked from commit ${TIP})`, `Fix Atlas (#1271)\n\n(cherry picked from commit ${D})`]);
   assert.deepEqual(waitingFromCommits(commits, "o/r", { shipped, hold: HOLD }), [
-    { number: 1270, title: "My Agent: owner-only production mode [preview]", url: "https://github.com/o/r/pull/1270", held: true },
+    { number: 1270, title: "My Agent: owner-only production mode [preview]", url: "https://github.com/o/r/pull/1270", held: true, heldLabel: "My Agent" },
   ]);
 });
 
@@ -57,4 +57,15 @@ test("waitingFromCommits: a revert PR cancels the PRs it reverts", () => {
   assert.deepEqual(waitingFromCommits(commits, "o/r", { hold: HOLD }).map((w) => w.number), [1284]);
   // Only part of the set waiting (one already shipped) → keep the revert visible.
   assert.deepEqual(waitingFromCommits(commits.slice(0, 3), "o/r").map((w) => w.number), [1284, 1275, 1270]);
+});
+
+test("BSR also holds scheduling/calendar work (2026-10-09), not walkthrough or job-page work", () => {
+  const hold = getApp("bsr").hold;
+  assert.equal(isHeld(hold, { title: "Drag to move and resize visits on the schedule calendar" }), "Scheduling");
+  assert.equal(isHeld(hold, { title: "Team: My hours (tap a day, Repeat every week) and Who's working" }), "Scheduling");
+  assert.equal(isHeld(hold, { title: "Scheduling epic (BSR-1389): Assignments tab" }), "Scheduling");
+  assert.equal(isHeld(hold, { title: "Refactor", files: ["components/schedule/workflow-preview/x.tsx"] }), "Scheduling");
+  assert.equal(isHeld(hold, { title: "My Agent: new design" }), "My Agent");
+  assert.equal(isHeld(hold, { title: "Live Walkthrough: Retake on auto photos", files: ["components/ai-assistant/atlas-workspace.tsx"] }), false);
+  assert.equal(isHeld(hold, { title: "Bring the job workspace up on phones", files: ["components/projects/job-workspace.tsx"] }), false);
 });

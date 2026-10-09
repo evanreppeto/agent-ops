@@ -31,7 +31,8 @@ const units = git(["log", "--first-parent", "--reverse", "--format=%H %P", `${ma
   .trim().split("\n").filter(Boolean).map((l) => { const [sha, ...parents] = l.split(" "); return { sha, parents }; });
 
 git(["worktree", "add", "--detach", wt, mainSha], { stdio: "ignore" });
-const shipped = shippedFromMain([git(["log", "--format=%B%x00", "-n", "500", mainSha])].flatMap((t) => t.split("\0"))).shas;
+const shippedMain = shippedFromMain([git(["log", "--format=%B%x00", "-n", "500", mainSha])].flatMap((t) => t.split("\0")));
+const shipped = shippedMain.shas;
 
 function conflicted() {
   return git(["-C", wt, "diff", "--name-only", "--diff-filter=U"]).split("\n").filter(Boolean);
@@ -65,8 +66,12 @@ for (const u of units) {
   const row = { sha: u.sha, number, title };
   const files = git(["diff", "--name-only", "--no-renames", u.parents[0], u.sha]).split("\n").filter(Boolean);
   if (SYNC.test(subject) || SYNC.test(lines[1] ?? "") || files.length === 0) { out.skipped.push(row); continue; }
-  if (isHeld(hold, { title, files })) { out.held.push(row); continue; }
-  if (shipped.has(u.sha) || (u.parents.length > 1 && shipped.has(u.parents[1]))) { out.alreadyOnMain.push(row); continue; }
+  const heldBy = isHeld(hold, { title, files });
+  if (heldBy) { out.held.push({ ...row, label: heldBy }); continue; }
+  if (shipped.has(u.sha) || (u.parents.length > 1 && shipped.has(u.parents[1])) || (number && shippedMain.numbers.has(number)) || shippedMain.subjects.has(String(title).toLowerCase())) {
+    out.alreadyOnMain.push(row);
+    continue;
+  }
   const before = git(["-C", wt, "rev-parse", "HEAD"]).trim();
   try {
     pick(["cherry-pick", "-x", "--keep-redundant-commits", ...(u.parents.length > 1 ? ["-m", "1"] : []), u.sha]);

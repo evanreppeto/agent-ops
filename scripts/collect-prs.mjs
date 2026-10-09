@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { listApps } from "../lib/config.mjs";
 import { waitingFromCommits, shippedFromMain } from "../lib/waiting.mjs";
+import { holdList } from "../lib/hold.mjs";
 
 const MAX_WAITING_PAGES = 3; // 100 commits a page → newest ~300 commits on main...dev
 
@@ -46,7 +47,7 @@ const apps = listApps().map((app) => {
     .filter((p) => p.base === "main" && p.headRef.startsWith("claude/promote-"))
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
   const promotionPr = promo ? { number: promo.number, url: promo.url } : null;
-  return { key: app.key, short: app.short, name: app.name, repo: app.repo, open, merged, waiting, waitingTruncated, promotionPr, holdLabel: app.hold?.label ?? null };
+  return { key: app.key, short: app.short, name: app.name, repo: app.repo, open, merged, waiting, waitingTruncated, promotionPr, holdLabel: holdList(app.hold).map((h) => h.label).join(", ") || null };
 });
 
 process.stdout.write(JSON.stringify({ generatedAt: new Date().toISOString(), apps }, null, 2));

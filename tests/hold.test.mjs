@@ -33,3 +33,28 @@ test("waitingFromCommits: drops PRs already cherry-picked to main, marks held on
     { number: 1270, title: "My Agent: owner-only production mode [preview]", url: "https://github.com/o/r/pull/1270", held: true },
   ]);
 });
+
+test("waitingFromCommits: hotfix cherry-picks to main count as shipped", () => {
+  const commits = [
+    { sha: "1".repeat(40), parents: ["0".repeat(40)], message: "Cover the time sync fix migration: uuid replica + release coverage entry (#1315)" },
+    { sha: "2".repeat(40), parents: ["0".repeat(40)], message: "Fix QuickBooks time sync failing with \"uuid = text\" (#1311)" },
+    { sha: "3".repeat(40), parents: ["0".repeat(40)], message: "Schedule: shorter To place (#1314)" },
+  ];
+  const shipped = shippedFromMain([
+    "Hotfix to main: fix QuickBooks time sync\n\nCherry-pick of #1311 (already merged to dev) onto main.",
+    "Cover the time sync fix migration: uuid replica + release coverage entry\n\nbody",
+  ]);
+  assert.deepEqual(waitingFromCommits(commits, "o/r", { shipped }).map((w) => w.number), [1314]);
+});
+
+test("waitingFromCommits: a revert PR cancels the PRs it reverts", () => {
+  const commits = [
+    "Calendar drag (#1284)",
+    "Take My Agent off dev (revert #1266 and #1270) (#1275)",
+    "My Agent: owner-only production mode (#1270)",
+    "My Agent: new design (#1266)",
+  ];
+  assert.deepEqual(waitingFromCommits(commits, "o/r", { hold: HOLD }).map((w) => w.number), [1284]);
+  // Only part of the set waiting (one already shipped) → keep the revert visible.
+  assert.deepEqual(waitingFromCommits(commits.slice(0, 3), "o/r").map((w) => w.number), [1284, 1275, 1270]);
+});
